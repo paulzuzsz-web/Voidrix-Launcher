@@ -34,6 +34,13 @@ contextBridge.exposeInMainWorld('voidrix', {
     onState: (cb) => on('window:state', cb),
   },
 
+  setup: {
+    status: () => call('setup:status'),
+    pickFolder: (current) => call('setup:pickFolder', { current }),
+    apply: (folder) => call('setup:apply', { folder }),
+    changeFolder: (folder, restart = true) => call('setup:changeFolder', { folder, restart }),
+  },
+
   auth: {
     bootstrap: () => call('auth:bootstrap'),
     register: (payload) => call('auth:register', payload),
@@ -66,7 +73,7 @@ contextBridge.exposeInMainWorld('voidrix', {
 
   dialog: {
     pickExecutable: (title) => call('dialog:pickExecutable', { title }),
-    pickImage: (multiple = false) => call('dialog:pickImage', { multiple }),
+    pickImage: (multiple = false, kind = 'sonstiges') => call('dialog:pickImage', { multiple, kind }),
     pickFolder: () => call('dialog:pickFolder'),
   },
 

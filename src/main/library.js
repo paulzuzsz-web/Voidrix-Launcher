@@ -125,12 +125,16 @@ function resolveMediaPath(ref) {
   return path.resolve(path.dirname(store.catalogPath()), value);
 }
 
-/** Kopiert ein Bild in den media-Ordner und gibt die Referenz zurück. */
-function importMedia(sourcePath) {
+/**
+ * Kopiert ein Bild in den media-Ordner und gibt die Referenz zurück.
+ * `kind` bestimmt den Unterordner (banner, cover, icons, screenshots,
+ * profilbilder) - so bleibt der Datenordner aufgeräumt.
+ */
+function importMedia(sourcePath, kind = 'sonstiges') {
   const src = String(sourcePath || '').trim();
   if (!src) return '';
   if (/^(https?|data):/i.test(src)) return src; // URLs bleiben wie sie sind
-  if (src.startsWith('media/')) return src; // schon importiert
+  if (src.startsWith('media/') || src.startsWith('media\\')) return src.replace(/\\/g, '/');
 
   if (!store.fileExists(src)) throw new LibraryError(`Bilddatei nicht gefunden: ${src}`);
 
@@ -141,15 +145,15 @@ function importMedia(sourcePath) {
 
   const buf = fs.readFileSync(src);
   const hash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16);
-  const fileName = `${hash}${ext}`;
-  const target = path.join(store.ensureDir(store.mediaDir()), fileName);
+  const folder = store.ensureDir(store.mediaKindDir(kind));
+  const target = path.join(folder, `${hash}${ext}`);
   if (!store.fileExists(target)) fs.writeFileSync(target, buf);
-  return `media/${fileName}`;
+  return `media/${path.basename(folder)}/${hash}${ext}`;
 }
 
-function importMediaList(list) {
+function importMediaList(list, kind) {
   if (!Array.isArray(list)) return [];
-  return list.map((item) => importMedia(item)).filter(Boolean);
+  return list.map((item) => importMedia(item, kind)).filter(Boolean);
 }
 
 /* --------------------------------------------------------------------- */
@@ -189,18 +193,16 @@ function getApp(id) {
 }
 
 function catalogInfo() {
-  const file = store.catalogPath();
+  const paths = store.paths();
   let bytes = 0;
   try {
-    bytes = fs.statSync(file).size;
+    bytes = fs.statSync(paths.catalogPath).size;
   } catch {
     /* egal */
   }
   return {
-    catalogPath: file,
-    dataDir: store.dataDir(),
-    mediaDir: store.mediaDir(),
-    accountsPath: store.accountsPath(),
+    ...paths,
+    dataDir: paths.dataRoot,
     bytes,
     count: readCatalog().apps.length,
   };
@@ -233,10 +235,10 @@ function saveEntry(input, user) {
     ...input,
     title,
     id: existing ? existing.id : input.id || newId(title),
-    banner: importMedia(input.banner ?? existing?.banner ?? ''),
-    cover: importMedia(input.cover ?? existing?.cover ?? ''),
-    icon: importMedia(input.icon ?? existing?.icon ?? ''),
-    screenshots: importMediaList(input.screenshots ?? existing?.screenshots ?? []),
+    banner: importMedia(input.banner ?? existing?.banner ?? '', 'banner'),
+    cover: importMedia(input.cover ?? existing?.cover ?? '', 'cover'),
+    icon: importMedia(input.icon ?? existing?.icon ?? '', 'icons'),
+    screenshots: importMediaList(input.screenshots ?? existing?.screenshots ?? [], 'screenshots'),
     tags: Array.isArray(input.tags)
       ? input.tags
       : String(input.tags || '')
@@ -254,6 +256,7 @@ function saveEntry(input, user) {
   if (existingIndex >= 0) data.apps[existingIndex] = merged;
   else data.apps.push(merged);
 
+  store.backupCatalog(); // Sicherung des bisherigen Stands
   writeCatalog(data);
   return decorate(merged);
 }
@@ -271,6 +274,7 @@ function deleteEntry(id) {
   const before = data.apps.length;
   data.apps = data.apps.filter((a) => a.id !== id);
   if (data.apps.length === before) throw new LibraryError('Eintrag nicht gefunden.');
+  store.backupCatalog(); // Sicherung vor dem Löschen
   writeCatalog(data);
   return true;
 }

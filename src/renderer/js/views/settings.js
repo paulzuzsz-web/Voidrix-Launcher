@@ -4,6 +4,7 @@
 
 import {
   $,
+  confirmDialog,
   esc,
   icon,
   img,
@@ -52,8 +53,21 @@ export function renderSettings(view, { onLogout }) {
         </div>
 
         ${setting(
+          `${icon('folder')} Datenordner`,
+          `Hier liegt alles: Katalog, Konten, Bilder und Sicherungen.<br><span class="mono">${esc(
+            info.dataRoot || info.dataDir || ''
+          )}</span>`,
+          `<button class="btn btn--sm" data-act="open-data">${icon('folder')}Öffnen</button>
+           ${
+             state.user?.isAdmin
+               ? `<button class="btn btn--sm btn--ghost" data-act="change-data">${icon('refresh')}Ändern</button>`
+               : ''
+           }`
+        )}
+
+        ${setting(
           'Games-Apps.json',
-          `Hier stehen alle Titel und die Pfade zu den .exe-Dateien.<br><span class="mono">${esc(
+          `Alle Titel und die Pfade zu den .exe-Dateien.<br><span class="mono">${esc(
             info.catalogPath || ''
           )}</span>`,
           `<button class="btn btn--sm" data-act="open-catalog">${icon('edit')}Datei öffnen</button>
@@ -62,15 +76,33 @@ export function renderSettings(view, { onLogout }) {
         )}
 
         ${setting(
-          'Bilder-Ordner',
-          `Hochgeladene Banner, Cover und Icons.<br><span class="mono">${esc(info.mediaDir || '')}</span>`,
+          'media/ — Bilder',
+          `Banner, Cover, Icons, Screenshots und Profilbilder, nach Art sortiert.<br><span class="mono">${esc(
+            info.mediaDir || ''
+          )}</span>`,
           `<button class="btn btn--sm btn--ghost" data-act="open-media">${icon('folder')}Öffnen</button>`
         )}
 
         ${setting(
-          'Konten',
+          'spiele/ — Installationen',
+          `Vorgeschlagener Platz für deine Spiele und Apps.<br><span class="mono">${esc(
+            info.gamesDir || ''
+          )}</span>`,
+          `<button class="btn btn--sm btn--ghost" data-act="open-games">${icon('folder')}Öffnen</button>`
+        )}
+
+        ${setting(
+          'sicherungen/ — Backups',
+          `Automatische Kopien der Games-Apps.json vor jeder Änderung.<br><span class="mono">${esc(
+            info.backupDir || ''
+          )}</span>`,
+          `<button class="btn btn--sm btn--ghost" data-act="open-backups">${icon('folder')}Öffnen</button>`
+        )}
+
+        ${setting(
+          'konten/ — Konten',
           `Alle Konten liegen lokal auf diesem PC.<br><span class="mono">${esc(info.accountsPath || '')}</span>`,
-          `<button class="btn btn--sm btn--ghost" data-act="open-data">${icon('folder')}Datenordner</button>`
+          `<button class="btn btn--sm btn--ghost" data-act="open-accounts">${icon('folder')}Öffnen</button>`
         )}
 
         ${setting(
@@ -81,7 +113,7 @@ export function renderSettings(view, { onLogout }) {
 
         ${setting(
           'Abmelden',
-          'Beendet die gespeicherte Anmeldung auf diesem Geraet.',
+          'Beendet die gespeicherte Anmeldung auf diesem Gerät.',
           `<button class="btn btn--sm btn--danger" data-act="logout">${icon('logout')}Abmelden</button>`
         )}
 
@@ -97,11 +129,17 @@ export function renderSettings(view, { onLogout }) {
       </div>
     </div>`;
 
+  const open = (target) => vx.shell.openPath(target).catch((e) => toastError(e.message));
+
   const actions = {
-    'open-catalog': () => vx.shell.openPath('catalog').catch((e) => toastError(e.message)),
-    'open-folder': () => vx.shell.openPath('catalogFolder').catch((e) => toastError(e.message)),
-    'open-media': () => vx.shell.openPath('media').catch((e) => toastError(e.message)),
-    'open-data': () => vx.shell.openPath('data').catch((e) => toastError(e.message)),
+    'open-catalog': () => open('catalog'),
+    'open-folder': () => open('catalogFolder'),
+    'open-media': () => open('media'),
+    'open-data': () => open('data'),
+    'open-games': () => open('games'),
+    'open-backups': () => open('backups'),
+    'open-accounts': () => open('accounts'),
+    'change-data': () => changeDataFolder(info),
     reload: async (btn) => {
       await withBusy(btn, () => loadApps({ silent: false }));
       toastOk('Katalog neu geladen.');
@@ -122,6 +160,45 @@ export function renderSettings(view, { onLogout }) {
 
 /* --------------------------------- Modale -------------------------------- */
 
+/** Datenordner verschieben: Ordner wählen, Daten mitnehmen, neu starten. */
+async function changeDataFolder(info) {
+  let picked;
+  try {
+    picked = await vx.setup.pickFolder(info.dataRoot || info.dataDir);
+  } catch (err) {
+    toastError(err.message);
+    return;
+  }
+  if (!picked) return;
+
+  if (!picked.writable) {
+    toastError('In diesem Ordner darf nicht geschrieben werden. Bitte einen anderen wählen.');
+    return;
+  }
+
+  const ok = await confirmDialog({
+    title: 'Datenordner wechseln?',
+    text:
+      `Neuer Ordner:\n${picked.folder}\n\n` +
+      'Katalog, Konten und Bilder werden dorthin kopiert und die Ordnerstruktur wird angelegt. ' +
+      'Der Launcher startet anschließend neu. Die Dateien im alten Ordner bleiben als Kopie liegen.',
+    confirmLabel: 'Verschieben und neu starten',
+  });
+  if (!ok) return;
+
+  try {
+    const result = await vx.setup.changeFolder(picked.folder);
+    toastOk(
+      `Neuer Datenordner:\n${result.dataRoot}` +
+        (result.moved ? `\n${result.moved} Dateien übernommen.` : '') +
+        '\nDer Launcher startet gleich neu…',
+      'Umgezogen'
+    );
+  } catch (err) {
+    toastError(err.message, 'Wechsel fehlgeschlagen');
+  }
+}
+
 function showExample() {
   const example = `{
   "apps": [
@@ -131,9 +208,9 @@ function showExample() {
       "type": "game",
       "developer": "Voidrix Studios",
       "description": "Schneller Arena-Shooter.",
-      "banner": "media/arena-banner.png",
-      "cover": "media/arena-cover.png",
-      "icon": "media/arena-icon.png",
+      "banner": "media/banner/arena.png",
+      "cover": "media/cover/arena.png",
+      "icon": "media/icons/arena.png",
       "tags": ["Action", "Multiplayer"],
       "version": "1.0.0",
       "size": "12 GB",
@@ -205,7 +282,7 @@ async function editProfile() {
     onMount: (root) => {
       $('[data-pick-avatar]', root).addEventListener('click', async () => {
         try {
-          const ref = await vx.dialog.pickImage(false);
+          const ref = await vx.dialog.pickImage(false, 'profilbilder');
           if (!ref) return;
           avatar = ref;
           $('#pf-avatar', root).innerHTML = img(avatar, '') || '';

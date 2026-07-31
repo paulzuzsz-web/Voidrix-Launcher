@@ -142,6 +142,78 @@
   box-shadow: 0 40px 90px -40px #000, 0 0 0 1px rgba(139, 92, 246, 0.08) inset;
 }
 
+.auth__card--wide {
+  width: min(520px, 100%);
+}
+
+/* Vorschau der Ordnerstruktur in der Ersteinrichtung */
+.tree {
+  margin-top: 6px;
+  padding: 14px 16px;
+  border-radius: var(--r);
+  background: rgba(6, 5, 14, 0.6);
+  border: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.tree__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px dashed var(--line);
+  color: var(--text);
+  font-weight: 650;
+}
+
+.tree__head svg {
+  color: var(--violet);
+  width: 16px;
+  height: 16px;
+}
+
+.tree__head .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--text-dim);
+}
+
+.tree__branch {
+  color: var(--text-faint);
+  font-family: 'Cascadia Mono', Consolas, monospace;
+}
+
+.tree__icon svg {
+  width: 14px;
+  height: 14px;
+  color: var(--cyan);
+}
+
+.tree__name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tree__info {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+
 .auth__tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;

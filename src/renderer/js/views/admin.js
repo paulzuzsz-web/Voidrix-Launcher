@@ -8,6 +8,9 @@ import { deleteApp, getApp, saveApp, state } from '../state.js';
 
 const vx = window.voidrix;
 
+/** Formularfeld -> Unterordner in media/ */
+const MEDIA_KIND = { banner: 'banner', cover: 'cover', icon: 'icons' };
+
 const EMPTY = {
   id: '',
   title: '',
@@ -116,7 +119,7 @@ export function renderAdmin(view, { navigate, params }) {
             <label class="field__label" for="a-desc">Beschreibung</label>
             <textarea class="textarea" id="a-desc" name="description"
                       placeholder="Worum geht es? Features, Steuerung, Systemvoraussetzungen …">${esc(data.description)}</textarea>
-            <div class="field__hint">Zeilenumbrueche bleiben auf der Detailseite erhalten.</div>
+            <div class="field__hint">Zeilenumbrüche bleiben auf der Detailseite erhalten.</div>
           </div>
 
           <div class="form-row--3 form-row">
@@ -332,7 +335,8 @@ export function renderAdmin(view, { navigate, params }) {
   view.addEventListener('click', async (event) => {
     const pick = event.target.closest('[data-pick]');
     if (pick) {
-      const ref = await vx.dialog.pickImage(false).catch((err) => toastError(err.message));
+      const kind = MEDIA_KIND[pick.dataset.pick] || 'sonstiges';
+      const ref = await vx.dialog.pickImage(false, kind).catch((err) => toastError(err.message));
       if (ref) {
         form.elements[pick.dataset.pick].value = ref;
         refreshPreview();
@@ -341,7 +345,7 @@ export function renderAdmin(view, { navigate, params }) {
     }
 
     if (event.target.closest('[data-add-shots]')) {
-      const refs = await vx.dialog.pickImage(true).catch((err) => toastError(err.message));
+      const refs = await vx.dialog.pickImage(true, 'screenshots').catch((err) => toastError(err.message));
       if (refs?.length) {
         screenshots.push(...refs);
         renderShots();
