@@ -1,0 +1,456 @@
+/* =====================================================================
+   Voidrix Launcher - Grundlagen: Farben, Reset, Hintergrund, Titelleiste
+   ===================================================================== */
+
+:root {
+  /* Flaechen */
+  --bg: #07060e;
+  --bg-2: #0b0917;
+  --panel: rgba(255, 255, 255, 0.045);
+  --panel-2: rgba(255, 255, 255, 0.07);
+  --panel-solid: #110e1f;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+
+  /* Text */
+  --text: #ece9fb;
+  --text-dim: #a29ec4;
+  --text-faint: #6f6a90;
+
+  /* Akzente */
+  --violet: #8b5cf6;
+  --violet-deep: #6d28d9;
+  --cyan: #22d3ee;
+  --magenta: #e879f9;
+  --accent: var(--violet);
+  --accent-2: var(--cyan);
+  --grad: linear-gradient(115deg, var(--violet) 0%, #6366f1 45%, var(--cyan) 100%);
+  --grad-soft: linear-gradient(115deg, rgba(139, 92, 246, 0.22), rgba(34, 211, 238, 0.16));
+
+  /* Status */
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --danger: #fb7185;
+
+  /* Form */
+  --r-sm: 8px;
+  --r: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+
+  --shadow: 0 18px 45px -18px rgba(0, 0, 0, 0.9);
+  --shadow-glow: 0 0 0 1px rgba(139, 92, 246, 0.35), 0 22px 60px -22px rgba(139, 92, 246, 0.75);
+
+  --titlebar-h: 42px;
+  --rail-w: 236px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI Variable Display', 'Segoe UI', Inter, system-ui, -apple-system, 'Helvetica Neue',
+    Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* Grundgröße - einzelne Bausteine überschreiben sie gezielt. */
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+/* Icons mitten im Fließtext etwas kleiner und auf der Grundlinie. */
+.field__hint svg,
+.auth__hintbox svg,
+.info-row svg {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+}
+
+::selection {
+  background: rgba(139, 92, 246, 0.45);
+  color: #fff;
+}
+
+/* ------------------------------ Scrollbars ------------------------------ */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 92, 246, 0.45) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.55), rgba(34, 211, 238, 0.4));
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.85), rgba(34, 211, 238, 0.7));
+  background-clip: content-box;
+}
+
+/* ------------------------------ Hintergrund ----------------------------- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% -10%, #17103a 0%, #0a0817 45%, var(--bg) 100%);
+}
+
+.aurora {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.5;
+  will-change: transform;
+}
+
+.aurora--1 {
+  width: 46vw;
+  height: 46vw;
+  left: -8vw;
+  top: -12vw;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.75), transparent 62%);
+  animation: drift1 26s var(--ease) infinite alternate;
+}
+
+.aurora--2 {
+  width: 40vw;
+  height: 40vw;
+  right: -6vw;
+  top: 8vh;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.55), transparent 62%);
+  animation: drift2 32s var(--ease) infinite alternate;
+}
+
+.aurora--3 {
+  width: 52vw;
+  height: 42vw;
+  left: 22vw;
+  bottom: -22vh;
+  background: radial-gradient(circle, rgba(232, 121, 249, 0.4), transparent 65%);
+  animation: drift3 38s var(--ease) infinite alternate;
+}
+
+@keyframes drift1 {
+  to {
+    transform: translate3d(9vw, 7vh, 0) scale(1.15);
+  }
+}
+@keyframes drift2 {
+  to {
+    transform: translate3d(-11vw, 10vh, 0) scale(1.2);
+  }
+}
+@keyframes drift3 {
+  to {
+    transform: translate3d(6vw, -9vh, 0) scale(1.1);
+  }
+}
+
+/* Feines Raster im Hintergrund (nicht mit dem Karten-Raster .grid verwechseln). */
+.backdrop__grid {
+  position: absolute;
+  inset: -2px;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(90% 70% at 50% 30%, #000 0%, transparent 78%);
+}
+
+.vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 100% at 50% 0%, transparent 40%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora {
+    animation: none;
+  }
+}
+
+/* ------------------------------ Titelleiste ----------------------------- */
+
+.titlebar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--titlebar-h);
+  z-index: 60;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  background: linear-gradient(180deg, rgba(9, 7, 18, 0.92), rgba(9, 7, 18, 0.55));
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+
+.titlebar__drag {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding-left: 14px;
+  -webkit-app-region: drag;
+}
+
+.titlebar__actions {
+  display: flex;
+  -webkit-app-region: no-drag;
+}
+
+.winbtn {
+  width: 46px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 0.16s, color 0.16s;
+}
+
+.winbtn svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.4;
+}
+
+.winbtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.winbtn--close:hover {
+  background: #e11d48;
+  color: #fff;
+}
+
+/* --------------------------------- Brand -------------------------------- */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand__mark {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--grad);
+  border-radius: 10px;
+  box-shadow: 0 6px 18px -6px rgba(139, 92, 246, 0.9);
+}
+
+.brand__mark svg {
+  stroke-width: 2;
+}
+
+.brand--sm .brand__mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+
+.brand--sm .brand__mark svg {
+  width: 15px;
+  height: 15px;
+}
+
+.brand__text {
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  font-size: 12.5px;
+  background: linear-gradient(90deg, #fff, #c4b5fd 55%, #67e8f9);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.brand__sub {
+  font-size: 10px;
+  letter-spacing: 0.34em;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+/* ------------------------------ Ladebildschirm -------------------------- */
+
+.boot {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 22px;
+  background: var(--bg);
+  transition: opacity 0.45s var(--ease), visibility 0.45s;
+}
+
+.boot[hidden] {
+  display: grid;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.boot__mark {
+  width: 84px;
+  height: 84px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--grad);
+  border-radius: 24px;
+  box-shadow: 0 0 70px -10px rgba(139, 92, 246, 0.9);
+  animation: pulse 2.2s var(--ease) infinite;
+}
+
+.boot__mark svg {
+  width: 48px;
+  height: 48px;
+  stroke-width: 2;
+}
+
+@keyframes pulse {
+  50% {
+    transform: translateY(-6px) scale(1.04);
+    box-shadow: 0 0 90px 0 rgba(34, 211, 238, 0.55);
+  }
+}
+
+.boot__bar {
+  width: 200px;
+  height: 3px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.boot__bar span {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 99px;
+  background: var(--grad);
+  animation: slide 1.25s ease-in-out infinite;
+}
+
+@keyframes slide {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.boot__text {
+  color: var(--text-faint);
+  font-size: 12.5px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+/* --------------------------- gemeinsame Effekte ------------------------- */
+
+.glass {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  backdrop-filter: blur(18px);
+}
+
+.fade-in {
+  animation: fadeIn 0.4s var(--ease) both;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.rise > * {
+  animation: rise 0.5s var(--ease) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}

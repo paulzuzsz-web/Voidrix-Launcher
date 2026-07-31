@@ -1,0 +1,87 @@
+{
+  "name": "voidrix-launcher",
+  "productName": "Voidrix Launcher",
+  "version": "1.0.0",
+  "description": "Voidrix Launcher - Games & Apps Launcher im Epic-Style mit Accounts, Admin-Upload und Games-Apps.json",
+  "main": "src/main/main.js",
+  "author": {
+    "name": "Voidrix",
+    "email": "support@voidrix.gg"
+  },
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "icon": "node scripts/make-icon.js",
+    "postinstall": "node scripts/make-icon.js",
+    "pack": "npm run icon && electron-builder --dir",
+    "dist": "npm run icon && electron-builder --win",
+    "dist:win": "npm run icon && electron-builder --win nsis portable",
+    "dist:linux": "npm run icon && electron-builder --linux",
+    "dist:mac": "npm run icon && electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "gg.voidrix.launcher",
+    "productName": "Voidrix Launcher",
+    "copyright": "Copyright (c) 2026 Voidrix",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "Games-Apps.json",
+        "to": "Games-Apps.json"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "artifactName": "Voidrix-Launcher-${version}-${arch}.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Voidrix Launcher",
+      "uninstallDisplayName": "Voidrix Launcher",
+      "artifactName": "Voidrix-Launcher-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Voidrix-Launcher-${version}-portable.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Game",
+      "target": ["AppImage"]
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.games",
+      "target": ["dmg"]
+    }
+  }
+}

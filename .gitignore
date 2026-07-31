@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/icon.png
+.voidrix-data/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.tmp
