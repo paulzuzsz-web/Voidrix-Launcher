@@ -13,6 +13,7 @@ import {
   subscribe,
 } from './state.js';
 import { renderAuth } from './auth.js';
+import { renderSetup } from './setup.js';
 import { renderStore } from './views/store.js';
 import { renderLibrary } from './views/library.js';
 import { renderDetail } from './views/detail.js';
@@ -301,7 +302,10 @@ async function boot() {
     toastError(err.message, 'Start fehlgeschlagen');
   }
 
-  if (info?.user) {
+  if (info?.needsSetup) {
+    // Erster Start nach der Installation: zuerst den Datenordner wählen.
+    renderSetup(() => renderAuth(onLoggedIn));
+  } else if (info?.user) {
     state.user = info.user;
     await loadApps();
     $('#shell').hidden = false;

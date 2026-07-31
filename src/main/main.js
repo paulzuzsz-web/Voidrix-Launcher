@@ -192,6 +192,37 @@ function resolveAppIcon() {
 }
 
 /* --------------------------------------------------------------------- */
+/* Datenordner                                                            */
+/* --------------------------------------------------------------------- */
+
+/** Was im gewählten Ordner angelegt wird - für die Vorschau im Einrichtungs-Bildschirm. */
+const FOLDER_PREVIEW = [
+  { name: 'Games-Apps.json', type: 'file', info: 'Alle Titel und die Pfade zu den .exe-Dateien' },
+  { name: 'konten', type: 'dir', info: 'Benutzerkonten und gespeicherte Anmeldung' },
+  { name: 'media', type: 'dir', info: 'banner, cover, icons, screenshots, profilbilder' },
+  { name: 'spiele', type: 'dir', info: 'Platz für eigene Installationen' },
+  { name: 'sicherungen', type: 'dir', info: 'Automatische Kopien der Games-Apps.json' },
+];
+
+/** Ordnerstruktur sicherstellen und den Admin-Zugang anlegen. */
+function prepareDataFolder() {
+  store.createStructure(store.dataDir());
+  auth.ensureAdminAccount();
+}
+
+function setupStatus() {
+  const configured = store.isConfigured();
+  return {
+    configured,
+    suggestion: store.suggestDataRoot(),
+    folders: FOLDER_PREVIEW,
+    paths: configured ? store.paths() : null,
+    version: app.getVersion(),
+    platform: process.platform,
+  };
+}
+
+/* --------------------------------------------------------------------- */
 /* IPC                                                                    */
 /* --------------------------------------------------------------------- */
 
@@ -244,16 +275,64 @@ function registerIpc() {
   });
   handle('window:isMaximized', () => Boolean(mainWindow?.isMaximized()));
 
+  /* ---------- Ersteinrichtung: Datenordner ---------- */
+  handle('setup:status', () => setupStatus());
+
+  handle('setup:pickFolder', async ({ current } = {}) => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Ordner für die Voidrix-Daten wählen',
+      defaultPath: current || store.suggestDataRoot(),
+      buttonLabel: 'Diesen Ordner nehmen',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled) return null;
+    const folder = result.filePaths[0];
+    return { folder, writable: store.isWritableDir(folder) };
+  });
+
+  /** Legt die Ordnerstruktur an und schaltet den Launcher frei. */
+  handle('setup:apply', ({ folder }) => {
+    // Nur bei der Ersteinrichtung erlaubt - danach geht es über setup:changeFolder.
+    if (store.isConfigured()) {
+      throw new Error('Der Datenordner ist bereits eingerichtet.');
+    }
+    const result = store.setDataRoot(folder);
+    prepareDataFolder();
+    return { ...result, ...setupStatus() };
+  });
+
+  /** Datenordner nachträglich verschieben (nur Admin) - danach Neustart. */
+  handle(
+    'setup:changeFolder',
+    ({ folder, restart = true }) => {
+      const result = store.setDataRoot(folder);
+      prepareDataFolder();
+      if (restart) {
+        setTimeout(() => {
+          app.relaunch();
+          app.exit(0);
+        }, 900);
+      }
+      return { ...result, ...setupStatus() };
+    },
+    { admin: true }
+  );
+
   /* ---------- Konten ---------- */
   handle('auth:bootstrap', () => {
-    auth.ensureAdminAccount();
+    if (!store.isConfigured()) {
+      return { needsSetup: true, user: null, ...setupStatus() };
+    }
+    prepareDataFolder();
     currentUser = auth.restoreSession();
     return {
+      needsSetup: false,
       user: currentUser,
       hasAccounts: auth.listUsers().length > 0,
       version: app.getVersion(),
       platform: process.platform,
       isDev,
+      ...setupStatus(),
     };
   });
 
@@ -280,7 +359,8 @@ function registerIpc() {
     (payload) => {
       currentUser = auth.updateProfile(currentUser.id, {
         ...payload,
-        avatar: payload.avatar !== undefined ? library.importMedia(payload.avatar) : undefined,
+        avatar:
+          payload.avatar !== undefined ? library.importMedia(payload.avatar, 'profilbilder') : undefined,
       });
       return currentUser;
     },
@@ -361,8 +441,10 @@ function registerIpc() {
             ]
           : [{ name: 'Alle Dateien', extensions: ['*'] }];
 
+      const games = store.gamesDir();
       const result = await dialog.showOpenDialog(mainWindow, {
         title: title || 'Programmdatei auswählen',
+        defaultPath: store.fileExists(games) || store.isWritableDir(games) ? games : undefined,
         properties: ['openFile', 'dontAddToRecent'],
         filters,
       });
@@ -373,14 +455,15 @@ function registerIpc() {
 
   handle(
     'dialog:pickImage',
-    async ({ multiple } = {}) => {
+    async ({ multiple, kind } = {}) => {
       const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Bild auswählen',
         properties: multiple ? ['openFile', 'multiSelections'] : ['openFile'],
         filters: [{ name: 'Bilder', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'svg'] }],
       });
       if (result.canceled) return multiple ? [] : null;
-      const refs = result.filePaths.map((p) => library.importMedia(p));
+      // Das Bild wandert direkt in den passenden Unterordner von media/.
+      const refs = result.filePaths.map((p) => library.importMedia(p, kind));
       return multiple ? refs : refs[0];
     },
     { auth: true }
@@ -406,6 +489,9 @@ function registerIpc() {
         catalogFolder: path.dirname(store.catalogPath()),
         data: store.dataDir(),
         media: store.ensureDir(store.mediaDir()),
+        games: store.ensureDir(store.gamesDir()),
+        backups: store.ensureDir(store.backupDir()),
+        accounts: path.dirname(store.accountsPath()),
       };
       const p = map[target] || target;
       const err = await shell.openPath(p);
@@ -458,10 +544,8 @@ if (!app.requestSingleInstanceLock()) {
     registerProtocols();
     registerIpc();
 
-    store.ensureDir(store.dataDir());
-    store.ensureDir(store.mediaDir());
-    store.catalogPath(); // legt Games-Apps.json an, falls sie fehlt
-    auth.ensureAdminAccount();
+    // Erst wenn ein Datenordner gewählt wurde, werden Dateien angelegt.
+    if (store.isConfigured()) prepareDataFolder();
 
     library.onRunningChanged((entry) => broadcast('library:running', entry));
 
