@@ -14,6 +14,7 @@ import {
 } from './state.js';
 import { renderAuth } from './auth.js';
 import { renderSetup } from './setup.js';
+import { checkOnStart } from './update.js';
 import { renderStore } from './views/store.js';
 import { renderLibrary } from './views/library.js';
 import { renderDetail } from './views/detail.js';
@@ -248,6 +249,7 @@ async function onLoggedIn(user) {
   await loadApps();
   $('#shell').hidden = false;
   navigate('store');
+  setTimeout(() => checkOnStart(), 2000);
 }
 
 /* ---------------------------------- Start -------------------------------- */
@@ -310,6 +312,8 @@ async function boot() {
     await loadApps();
     $('#shell').hidden = false;
     navigate('store');
+    // Kurz warten, damit der Store zuerst steht - dann nach Updates sehen.
+    setTimeout(() => checkOnStart(), 1500);
   } else {
     renderAuth(onLoggedIn);
   }

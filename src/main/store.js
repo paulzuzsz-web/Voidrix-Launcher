@@ -33,6 +33,7 @@ const DIRS = {
   media: 'media',
   games: 'spiele',
   backups: 'sicherungen',
+  updates: 'updates',
 };
 
 /** Unterordner in media/ - Bilder werden nach Art einsortiert. */
@@ -187,6 +188,7 @@ function createFolders(root) {
   MEDIA_KINDS.forEach((kind) => make(path.join(root, DIRS.media, kind)));
   make(path.join(root, DIRS.games));
   make(path.join(root, DIRS.backups));
+  make(path.join(root, DIRS.updates));
 
   writeReadme(root);
   return created;
@@ -215,6 +217,7 @@ function writeReadme(root) {
     '                  screenshots und profilbilder.',
     'spiele/           Freier Platz für eigene Installationen.',
     'sicherungen/      Automatische Kopien der Games-Apps.json.',
+    'updates/          Heruntergeladene Launcher-Updates.',
     '',
     'Der Ordner lässt sich im Launcher unter Einstellungen -> Datenordner ändern.',
     '',
@@ -285,8 +288,43 @@ function migrateData(from, to) {
 
   copyTree(path.join(from, DIRS.media), path.join(to, DIRS.media));
   copyTree(path.join(from, DIRS.backups), path.join(to, DIRS.backups));
+  // Hochgeladene Spiele ziehen mit um, sonst zeigen die Einträge ins Leere.
+  copyTree(path.join(from, DIRS.games), path.join(to, DIRS.games));
 
   return count;
+}
+
+/* --------------------------------------------------------------------- */
+/* Pfade innerhalb des Datenordners                                       */
+/* --------------------------------------------------------------------- */
+
+/**
+ * Macht aus einem absoluten Pfad im Datenordner einen relativen
+ * (z.B. "spiele/arena/Arena.exe"). Alles außerhalb bleibt unverändert.
+ * So bleibt der Katalog auch nach einem Umzug gültig.
+ */
+function relativizeToData(value) {
+  const input = String(value || '').trim();
+  if (!input || !path.isAbsolute(input)) return input;
+  const root = path.resolve(dataDir());
+  const abs = path.resolve(input);
+  if (abs !== root && !abs.startsWith(root + path.sep)) return input;
+  return path.relative(root, abs).split(path.sep).join('/');
+}
+
+/** Gegenstück zu relativizeToData: liefert immer einen absoluten Pfad. */
+function resolveDataPath(value) {
+  const input = String(value || '').trim();
+  if (!input) return '';
+  if (path.isAbsolute(input)) return input;
+  return path.resolve(dataDir(), input);
+}
+
+/** Liegt der Pfad im Ordner spiele/ des Datenordners? */
+function isInsideGames(value) {
+  const abs = path.resolve(resolveDataPath(value));
+  const games = path.resolve(gamesDir());
+  return abs.startsWith(games + path.sep);
 }
 
 /* --------------------------------------------------------------------- */
@@ -336,6 +374,28 @@ function backupDir() {
   return path.join(dataDir(), DIRS.backups);
 }
 
+function updatesDir() {
+  return path.join(dataDir(), DIRS.updates);
+}
+
+/* --------------------------------------------------------------------- */
+/* Einstellungen                                                          */
+/* --------------------------------------------------------------------- */
+
+function settingsPath() {
+  return path.join(dataDir(), 'einstellungen.json');
+}
+
+function readSettings() {
+  return readJson(settingsPath(), {});
+}
+
+function writeSettings(patch) {
+  const merged = { ...readSettings(), ...patch, updatedAt: new Date().toISOString() };
+  writeJson(settingsPath(), merged);
+  return merged;
+}
+
 /** Alle Orte auf einen Blick - für die Einstellungen. */
 function paths() {
   return {
@@ -346,6 +406,8 @@ function paths() {
     mediaDir: mediaDir(),
     gamesDir: gamesDir(),
     backupDir: backupDir(),
+    updatesDir: updatesDir(),
+    settingsPath: settingsPath(),
     locationFile: locationPath(),
     configured: Boolean(dataRoot),
   };
@@ -466,13 +528,20 @@ module.exports = {
   fileExists,
   gamesDir,
   isConfigured,
+  isInsideGames,
   isWritableDir,
   mediaDir,
   mediaKindDir,
   paths,
   readJson,
+  readSettings,
+  relativizeToData,
+  resolveDataPath,
   sessionPath,
   setDataRoot,
+  settingsPath,
   suggestDataRoot,
+  updatesDir,
   writeJson,
+  writeSettings,
 };

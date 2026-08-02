@@ -9,6 +9,18 @@
     "email": "support@voidrix.gg"
   },
   "license": "MIT",
+  "voidrix": {
+    "update": {
+      "manifest": "https://raw.githubusercontent.com/paulzuzsz-web/Voidrix-Launcher/main/package.json",
+      "downloads": {
+        "win": "https://github.com/paulzuzsz-web/Voidrix-Launcher/releases/latest/download/Voidrix-Launcher-Setup.exe",
+        "linux": "https://github.com/paulzuzsz-web/Voidrix-Launcher/releases/latest/download/Voidrix-Launcher.AppImage",
+        "mac": "https://github.com/paulzuzsz-web/Voidrix-Launcher/releases/latest/download/Voidrix-Launcher.dmg"
+      },
+      "notes": "",
+      "autoCheck": true
+    }
+  },
   "private": true,
   "scripts": {
     "start": "electron .",
@@ -51,11 +63,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -76,12 +92,16 @@
     "linux": {
       "icon": "build/icon.png",
       "category": "Game",
-      "target": ["AppImage"]
+      "target": [
+        "AppImage"
+      ]
     },
     "mac": {
       "icon": "build/icon.png",
       "category": "public.app-category.games",
-      "target": ["dmg"]
+      "target": [
+        "dmg"
+      ]
     }
   }
 }

@@ -16,6 +16,7 @@ const path = require('path');
 const store = require('./store');
 const auth = require('./auth');
 const library = require('./library');
+const updater = require('./updater');
 
 const RENDERER_DIR = path.join(__dirname, '..', 'renderer');
 const APP_ORIGIN = 'app://voidrix';
@@ -202,12 +203,24 @@ const FOLDER_PREVIEW = [
   { name: 'media', type: 'dir', info: 'banner, cover, icons, screenshots, profilbilder' },
   { name: 'spiele', type: 'dir', info: 'Platz für eigene Installationen' },
   { name: 'sicherungen', type: 'dir', info: 'Automatische Kopien der Games-Apps.json' },
+  { name: 'updates', type: 'dir', info: 'Heruntergeladene Launcher-Updates' },
 ];
 
 /** Ordnerstruktur sicherstellen und den Admin-Zugang anlegen. */
 function prepareDataFolder() {
   store.createStructure(store.dataDir());
   auth.ensureAdminAccount();
+}
+
+/** Startordner für Dateidialoge: zum Hochladen die Downloads, sonst spiele/. */
+function startDir(kind) {
+  try {
+    if (kind === 'downloads') return app.getPath('downloads');
+  } catch {
+    /* nicht überall vorhanden */
+  }
+  const games = store.gamesDir();
+  return store.isWritableDir(games) ? games : undefined;
 }
 
 function setupStatus() {
@@ -407,9 +420,22 @@ function registerIpc() {
 
   handle(
     'library:delete',
-    ({ id }) => {
-      const result = library.deleteEntry(id);
+    ({ id, withFiles }) => {
+      const result = library.deleteEntry(id, { withFiles: Boolean(withFiles) });
       broadcast('library:changed', { reason: 'delete', id });
+      return result;
+    },
+    { admin: true }
+  );
+
+  /** Programmdatei oder ganzen Spiel-Ordner in den Ordner spiele/ kopieren. */
+  handle(
+    'library:upload',
+    async ({ sourcePath, mode, title }, event) => {
+      const result = await library.uploadExecutable({ sourcePath, mode, title }, (progress) => {
+        if (!event.sender.isDestroyed()) event.sender.send('library:upload-progress', progress);
+      });
+      broadcast('library:changed', { reason: 'upload' });
       return result;
     },
     { admin: true }
@@ -425,14 +451,74 @@ function registerIpc() {
     { auth: true }
   );
 
+  /* ---------- Installieren per Download-Link ---------- */
+
+  handle(
+    'library:install',
+    async ({ id }, event) => {
+      const entry = await library.installEntry(id, (progress) => {
+        if (!event.sender.isDestroyed()) event.sender.send('library:download-progress', progress);
+      });
+      broadcast('library:changed', { reason: 'install', id });
+      return entry;
+    },
+    { auth: true }
+  );
+
+  handle('library:cancelInstall', ({ id }) => library.cancelInstall(id), { auth: true });
+
+  handle(
+    'library:uninstall',
+    ({ id }) => {
+      const entry = library.uninstallEntry(id);
+      broadcast('library:changed', { reason: 'uninstall', id });
+      return entry;
+    },
+    { auth: true }
+  );
+
+  /** Link im Admin-Formular prüfen: Dateiname und Größe anzeigen. */
+  handle('library:probeDownload', ({ url }) => library.probeDownload(url), { admin: true });
+
   handle('library:launch', ({ id }) => library.launch(id), { auth: true });
   handle('library:stop', ({ id }) => library.stop(id), { auth: true });
   handle('library:reveal', ({ id }) => library.revealInFolder(id), { auth: true });
 
+  /* ---------- Launcher-Update ---------- */
+
+  handle('update:check', ({ silent } = {}) => updater.check({ silent: Boolean(silent) }), { auth: true });
+
+  /** Soll beim Start automatisch gesucht werden? */
+  handle('update:autoCheck', async () => {
+    if (!updater.shouldAutoCheck()) return { skip: true };
+    try {
+      return await updater.check({ silent: true });
+    } catch (err) {
+      // Kein Netz o.ä. soll den Start nicht stören.
+      return { skip: true, error: err.message };
+    }
+  }, { auth: true });
+
+  handle(
+    'update:download',
+    async ({ url, version }, event) => {
+      const result = await updater.downloadUpdate({ url, version }, (progress) => {
+        if (!event.sender.isDestroyed()) event.sender.send('update:progress', progress);
+      });
+      return result;
+    },
+    { auth: true }
+  );
+
+  handle('update:cancel', () => updater.cancel(), { auth: true });
+  handle('update:install', ({ file }) => updater.install(file), { auth: true });
+  handle('update:settings', () => updater.config(), { auth: true });
+  handle('update:saveSettings', (patch) => updater.saveConfig(patch), { admin: true });
+
   /* ---------- Dialoge / System ---------- */
   handle(
     'dialog:pickExecutable',
-    async ({ title } = {}) => {
+    async ({ title, start } = {}) => {
       const filters =
         process.platform === 'win32'
           ? [
@@ -441,10 +527,9 @@ function registerIpc() {
             ]
           : [{ name: 'Alle Dateien', extensions: ['*'] }];
 
-      const games = store.gamesDir();
       const result = await dialog.showOpenDialog(mainWindow, {
         title: title || 'Programmdatei auswählen',
-        defaultPath: store.fileExists(games) || store.isWritableDir(games) ? games : undefined,
+        defaultPath: startDir(start),
         properties: ['openFile', 'dontAddToRecent'],
         filters,
       });
@@ -471,9 +556,10 @@ function registerIpc() {
 
   handle(
     'dialog:pickFolder',
-    async () => {
+    async ({ start } = {}) => {
       const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Ordner auswählen',
+        defaultPath: startDir(start),
         properties: ['openDirectory'],
       });
       return result.canceled ? null : result.filePaths[0];
