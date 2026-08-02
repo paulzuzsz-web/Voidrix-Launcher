@@ -17,6 +17,8 @@ Gebaut mit Electron, komplett offline, alle Daten bleiben auf dem eigenen PC.
   gilt der Titel als installiert und lässt sich mit einem Klick starten.
 * **Admin**: Games und Apps direkt im Launcher hochladen — mit Banner, Cover, Profilbild,
   Beschreibung, Tags, Version, Größe und allem Drum und Dran.
+* **Selbst-Update**: Beim Start vergleicht der Launcher seine Version mit der `package.json` im Netz.
+  Gibt es eine neuere, lädt er den Installer herunter und startet ihn.
 * **.exe**: Über `electron-builder` entsteht ein Windows-Installer und eine portable `.exe`.
 
 ---
@@ -78,6 +80,8 @@ diese Struktur:
 │   └── profilbilder/    Profilbilder der Benutzer
 ├── spiele/              hochgeladene Spiele und Apps (ein Ordner je Titel)
 ├── sicherungen/         automatische Kopien der Games-Apps.json
+├── updates/             heruntergeladene Launcher-Updates
+├── einstellungen.json   Launcher-Einstellungen (u. a. Update-Quelle)
 └── LIESMICH.txt         kurze Erklärung im Ordner selbst
 ```
 
@@ -158,6 +162,56 @@ Pfad wird sofort in `Games-Apps.json` gespeichert.
 
 Statt eines Dateipfads sind auch Protokoll-Links erlaubt, etwa `steam://rungameid/440` oder
 `com.epicgames.launcher://apps/...`.
+
+---
+
+## Der Launcher aktualisiert sich selbst
+
+Beim Start (und über **Einstellungen → Launcher-Updates → Jetzt suchen**) holt der Launcher eine
+`package.json` aus dem Netz und vergleicht deren `version` mit der laufenden. Ist die entfernte
+neuer, erscheint ein Fenster mit den Änderungen und dem Knopf **Jetzt aktualisieren**: die passende
+Datei wird heruntergeladen (mit Fortschritt und Abbrechen), gestartet — und der Launcher beendet
+sich, damit der Installer die alte Version ersetzen kann.
+
+Konfiguriert wird das im Block `voidrix.update` der eigenen `package.json`:
+
+```json
+"voidrix": {
+  "update": {
+    "manifest": "https://raw.githubusercontent.com/USER/REPO/main/package.json",
+    "downloads": {
+      "win": "https://github.com/USER/REPO/releases/latest/download/Voidrix-Launcher-Setup.exe",
+      "linux": "https://github.com/USER/REPO/releases/latest/download/Voidrix-Launcher.AppImage",
+      "mac": "https://github.com/USER/REPO/releases/latest/download/Voidrix-Launcher.dmg"
+    },
+    "notes": "Was ist neu?",
+    "autoCheck": true
+  }
+}
+```
+
+* `manifest` — die Datei, die verglichen wird. Am einfachsten die eigene `package.json` im Repo
+  (`raw.githubusercontent.com`). Nur **https** (zum Testen auch `localhost`).
+* `downloads` — die fertigen Dateien je System. Der Launcher nimmt automatisch die passende.
+  Diese Angaben dürfen auch in der *entfernten* `package.json` stehen — dann muss man beim
+  Ausliefern nur dort etwas ändern.
+* `notes` — Text, der im Update-Fenster steht.
+* `autoCheck` — Suche beim Start (höchstens alle 12 Stunden). Lässt sich im Launcher abschalten.
+
+Admins können Quelle, Download-Adresse und Auto-Suche zur Laufzeit ändern:
+**Einstellungen → Launcher-Updates → Quelle**. Diese Werte landen in `einstellungen.json` im
+Datenordner und haben Vorrang vor der `package.json`.
+
+**Neue Version veröffentlichen**
+
+1. `version` in der `package.json` erhöhen (z. B. `1.0.0` → `1.1.0`) und pushen.
+2. `npm run dist` bauen.
+3. Die erzeugte `Voidrix-Launcher-Setup-<version>.exe` als Release hochladen — unter dem Namen, der
+   in `downloads.win` steht (mit `releases/latest/download/…` bleibt die Adresse immer gleich).
+
+Fertig: Alle laufenden Launcher sehen die neue Version beim nächsten Start. Vorabversionen wie
+`1.1.0-beta.1` gelten dabei als älter als `1.1.0`. Wer ein Update nicht will, klickt
+**Diese Version überspringen** — dann kommt das Fenster erst bei der nächsten Version wieder.
 
 ---
 
@@ -249,7 +303,7 @@ Voidrix-Launcher/
     └── renderer/            # Oberfläche
         ├── index.html
         ├── styles/          # theme.css, components.css, views.css
-        └── js/              # app.js, setup.js, state.js, auth.js, views/*
+        └── js/              # app.js, setup.js, update.js, state.js, auth.js, views/*
 ```
 
 **Sicherheit**: Das UI läuft mit `contextIsolation`, ohne Node-Zugriff und mit strenger CSP.

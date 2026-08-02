@@ -763,6 +763,69 @@
   }
 }
 
+/* ------------------------------- Update --------------------------------- */
+
+.update__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.update__mark {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--grad-soft);
+  border: 1px solid var(--line);
+  color: var(--violet);
+}
+
+.update__mark svg {
+  width: 22px;
+  height: 22px;
+}
+
+.update__versions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.update__versions svg {
+  width: 15px;
+  height: 15px;
+  color: var(--text-faint);
+}
+
+.update__new {
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.update__notes {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(8, 6, 18, 0.55);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-size: 13.5px;
+  white-space: pre-line;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.update__progress {
+  margin-top: 16px;
+}
+
 /* ---------------------------- Fortschritt ------------------------------- */
 
 .progress {

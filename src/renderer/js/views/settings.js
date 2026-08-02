@@ -15,6 +15,7 @@ import {
   withBusy,
 } from '../ui.js';
 import { emit, loadApps, state } from '../state.js';
+import { checkNow } from '../update.js';
 
 const vx = window.voidrix;
 
@@ -106,6 +107,19 @@ export function renderSettings(view, { onLogout }) {
         )}
 
         ${setting(
+          `${icon('download')} Launcher-Updates`,
+          `Beim Start prüft der Launcher, ob es eine neuere Version gibt (Vergleich mit der
+           <span class="mono">package.json</span> aus dem Netz) — und installiert sie auf Wunsch.
+           <span id="update-state" class="mono"></span>`,
+          `<button class="btn btn--sm" data-act="update-check">${icon('refresh')}Jetzt suchen</button>
+           ${
+             state.user?.isAdmin
+               ? `<button class="btn btn--sm btn--ghost" data-act="update-settings">${icon('settings')}Quelle</button>`
+               : ''
+           }`
+        )}
+
+        ${setting(
           'Beispiel-Eintrag',
           'So sieht ein Eintrag in Games-Apps.json aus - einfach kopieren und anpassen.',
           `<button class="btn btn--sm btn--ghost" data-act="example">${icon('info')}Anzeigen</button>`
@@ -140,6 +154,8 @@ export function renderSettings(view, { onLogout }) {
     'open-backups': () => open('backups'),
     'open-accounts': () => open('accounts'),
     'change-data': () => changeDataFolder(info),
+    'update-check': (btn) => checkNow(btn),
+    'update-settings': () => editUpdateSource(),
     reload: async (btn) => {
       await withBusy(btn, () => loadApps({ silent: false }));
       toastOk('Katalog neu geladen.');
@@ -155,7 +171,80 @@ export function renderSettings(view, { onLogout }) {
     if (btn) actions[btn.dataset.act]?.(btn);
   });
 
+  // Version und letzte Suche nachtragen.
+  vx.update
+    .settings()
+    .then((cfg) => {
+      const el = $('#update-state', view);
+      if (!el) return;
+      const last = cfg.lastCheck ? new Date(cfg.lastCheck).toLocaleString('de-DE') : 'noch nie';
+      el.textContent = `Version ${info.version || ''} · zuletzt gesucht: ${last}` +
+        (cfg.autoCheck ? '' : ' · Auto-Suche aus');
+    })
+    .catch(() => {});
+
   return () => {};
+}
+
+/** Woher kommt die Update-Info? (nur Admin) */
+async function editUpdateSource() {
+  let cfg;
+  try {
+    cfg = await vx.update.settings();
+  } catch (err) {
+    toastError(err.message);
+    return;
+  }
+
+  await modal({
+    title: 'Update-Quelle',
+    text: 'Der Launcher vergleicht seine Version mit der "version" aus dieser Datei.',
+    html: `
+      <div class="field">
+        <label class="field__label" for="up-manifest">Adresse der package.json</label>
+        <input class="input mono" id="up-manifest" value="${esc(cfg.manifest || '')}"
+               placeholder="https://raw.githubusercontent.com/USER/REPO/main/package.json" />
+        <div class="field__hint">Nur https (zum Testen auch localhost).</div>
+      </div>
+      <div class="field">
+        <label class="field__label" for="up-win">Download für Windows (.exe)</label>
+        <input class="input mono" id="up-win" value="${esc(cfg.downloads?.win || '')}"
+               placeholder="https://github.com/USER/REPO/releases/latest/download/Setup.exe" />
+        <div class="field__hint">
+          Kann auch in der entfernten package.json unter <span class="mono">voidrix.update.downloads</span> stehen.
+        </div>
+      </div>
+      <label class="checkbox">
+        <input type="checkbox" id="up-auto" ${cfg.autoCheck ? 'checked' : ''} />
+        Beim Start automatisch nach Updates suchen
+      </label>`,
+    wide: true,
+    actions: [
+      { label: 'Abbrechen', className: 'btn--ghost' },
+      {
+        label: 'Speichern',
+        className: 'btn--primary',
+        keepOpen: true,
+        onClick: async (root, close) => {
+          const btn = $('[data-action="1"]', root);
+          await withBusy(btn, async () => {
+            try {
+              await vx.update.saveSettings({
+                manifest: $('#up-manifest', root).value.trim(),
+                downloads: { ...(cfg.downloads || {}), win: $('#up-win', root).value.trim() },
+                autoCheck: $('#up-auto', root).checked,
+                skipVersion: '',
+              });
+              toastOk('Update-Quelle gespeichert.');
+              close(true);
+            } catch (err) {
+              toastError(err.message);
+            }
+          });
+        },
+      },
+    ],
+  });
 }
 
 /* --------------------------------- Modale -------------------------------- */

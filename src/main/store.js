@@ -33,6 +33,7 @@ const DIRS = {
   media: 'media',
   games: 'spiele',
   backups: 'sicherungen',
+  updates: 'updates',
 };
 
 /** Unterordner in media/ - Bilder werden nach Art einsortiert. */
@@ -187,6 +188,7 @@ function createFolders(root) {
   MEDIA_KINDS.forEach((kind) => make(path.join(root, DIRS.media, kind)));
   make(path.join(root, DIRS.games));
   make(path.join(root, DIRS.backups));
+  make(path.join(root, DIRS.updates));
 
   writeReadme(root);
   return created;
@@ -215,6 +217,7 @@ function writeReadme(root) {
     '                  screenshots und profilbilder.',
     'spiele/           Freier Platz für eigene Installationen.',
     'sicherungen/      Automatische Kopien der Games-Apps.json.',
+    'updates/          Heruntergeladene Launcher-Updates.',
     '',
     'Der Ordner lässt sich im Launcher unter Einstellungen -> Datenordner ändern.',
     '',
@@ -371,6 +374,28 @@ function backupDir() {
   return path.join(dataDir(), DIRS.backups);
 }
 
+function updatesDir() {
+  return path.join(dataDir(), DIRS.updates);
+}
+
+/* --------------------------------------------------------------------- */
+/* Einstellungen                                                          */
+/* --------------------------------------------------------------------- */
+
+function settingsPath() {
+  return path.join(dataDir(), 'einstellungen.json');
+}
+
+function readSettings() {
+  return readJson(settingsPath(), {});
+}
+
+function writeSettings(patch) {
+  const merged = { ...readSettings(), ...patch, updatedAt: new Date().toISOString() };
+  writeJson(settingsPath(), merged);
+  return merged;
+}
+
 /** Alle Orte auf einen Blick - für die Einstellungen. */
 function paths() {
   return {
@@ -381,6 +406,8 @@ function paths() {
     mediaDir: mediaDir(),
     gamesDir: gamesDir(),
     backupDir: backupDir(),
+    updatesDir: updatesDir(),
+    settingsPath: settingsPath(),
     locationFile: locationPath(),
     configured: Boolean(dataRoot),
   };
@@ -507,10 +534,14 @@ module.exports = {
   mediaKindDir,
   paths,
   readJson,
+  readSettings,
   relativizeToData,
   resolveDataPath,
   sessionPath,
   setDataRoot,
+  settingsPath,
   suggestDataRoot,
+  updatesDir,
   writeJson,
+  writeSettings,
 };

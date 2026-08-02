@@ -78,6 +78,17 @@ contextBridge.exposeInMainWorld('voidrix', {
     onRunning: (cb) => on('library:running', cb),
   },
 
+  update: {
+    check: (silent = false) => call('update:check', { silent }),
+    autoCheck: () => call('update:autoCheck'),
+    download: (url, version) => call('update:download', { url, version }),
+    cancel: () => call('update:cancel'),
+    install: (file) => call('update:install', { file }),
+    settings: () => call('update:settings'),
+    saveSettings: (patch) => call('update:saveSettings', patch),
+    onProgress: (cb) => on('update:progress', cb),
+  },
+
   dialog: {
     pickExecutable: (title, start) => call('dialog:pickExecutable', { title, start }),
     pickImage: (multiple = false, kind = 'sonstiges') => call('dialog:pickImage', { multiple, kind }),

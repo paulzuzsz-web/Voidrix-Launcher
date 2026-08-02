@@ -16,6 +16,7 @@ const path = require('path');
 const store = require('./store');
 const auth = require('./auth');
 const library = require('./library');
+const updater = require('./updater');
 
 const RENDERER_DIR = path.join(__dirname, '..', 'renderer');
 const APP_ORIGIN = 'app://voidrix';
@@ -202,6 +203,7 @@ const FOLDER_PREVIEW = [
   { name: 'media', type: 'dir', info: 'banner, cover, icons, screenshots, profilbilder' },
   { name: 'spiele', type: 'dir', info: 'Platz für eigene Installationen' },
   { name: 'sicherungen', type: 'dir', info: 'Automatische Kopien der Games-Apps.json' },
+  { name: 'updates', type: 'dir', info: 'Heruntergeladene Launcher-Updates' },
 ];
 
 /** Ordnerstruktur sicherstellen und den Admin-Zugang anlegen. */
@@ -481,6 +483,37 @@ function registerIpc() {
   handle('library:launch', ({ id }) => library.launch(id), { auth: true });
   handle('library:stop', ({ id }) => library.stop(id), { auth: true });
   handle('library:reveal', ({ id }) => library.revealInFolder(id), { auth: true });
+
+  /* ---------- Launcher-Update ---------- */
+
+  handle('update:check', ({ silent } = {}) => updater.check({ silent: Boolean(silent) }), { auth: true });
+
+  /** Soll beim Start automatisch gesucht werden? */
+  handle('update:autoCheck', async () => {
+    if (!updater.shouldAutoCheck()) return { skip: true };
+    try {
+      return await updater.check({ silent: true });
+    } catch (err) {
+      // Kein Netz o.ä. soll den Start nicht stören.
+      return { skip: true, error: err.message };
+    }
+  }, { auth: true });
+
+  handle(
+    'update:download',
+    async ({ url, version }, event) => {
+      const result = await updater.downloadUpdate({ url, version }, (progress) => {
+        if (!event.sender.isDestroyed()) event.sender.send('update:progress', progress);
+      });
+      return result;
+    },
+    { auth: true }
+  );
+
+  handle('update:cancel', () => updater.cancel(), { auth: true });
+  handle('update:install', ({ file }) => updater.install(file), { auth: true });
+  handle('update:settings', () => updater.config(), { auth: true });
+  handle('update:saveSettings', (patch) => updater.saveConfig(patch), { admin: true });
 
   /* ---------- Dialoge / System ---------- */
   handle(
