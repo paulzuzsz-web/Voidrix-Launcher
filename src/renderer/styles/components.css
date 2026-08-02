@@ -491,7 +491,22 @@
   right: 10px;
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
+}
+
+/* Auf der schmalen Karte müssen zwei Badges nebeneinander passen. */
+.card__top .badge {
+  font-size: 10px;
+  padding: 3px 8px;
+  letter-spacing: 0.05em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card__top .badge svg {
+  width: 11px;
+  height: 11px;
 }
 
 .card__body {

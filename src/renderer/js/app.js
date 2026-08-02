@@ -2,7 +2,7 @@
  * Einstiegspunkt des UI: Start, Anmeldung, Navigation, Kopfzeile.
  */
 
-import { $, $$, debounce, esc, icon, img, initials, toast, toastError, withBusy } from './ui.js';
+import { $, $$, debounce, esc, icon, img, initials, toast, toastError, watchBrokenImages, withBusy } from './ui.js';
 import {
   connectLiveUpdates,
   emit,
@@ -11,6 +11,7 @@ import {
   state,
   stats,
   subscribe,
+  syncCatalog,
 } from './state.js';
 import { renderAuth } from './auth.js';
 import { renderSetup } from './setup.js';
@@ -249,7 +250,8 @@ async function onLoggedIn(user) {
   await loadApps();
   $('#shell').hidden = false;
   navigate('store');
-  setTimeout(() => checkOnStart(), 2000);
+  setTimeout(() => syncCatalog({ silent: true }), 700);
+  setTimeout(() => checkOnStart(), 2600);
 }
 
 /* ---------------------------------- Start -------------------------------- */
@@ -292,6 +294,7 @@ function wireReactivity() {
 }
 
 async function boot() {
+  watchBrokenImages();
   wireWindowControls();
   wireShortcuts();
   wireReactivity();
@@ -312,8 +315,10 @@ async function boot() {
     await loadApps();
     $('#shell').hidden = false;
     navigate('store');
-    // Kurz warten, damit der Store zuerst steht - dann nach Updates sehen.
-    setTimeout(() => checkOnStart(), 1500);
+    // Kurz warten, damit der Store zuerst steht - dann abgleichen und
+    // nach Launcher-Updates sehen.
+    setTimeout(() => syncCatalog({ silent: true }), 700);
+    setTimeout(() => checkOnStart(), 2200);
   } else {
     renderAuth(onLoggedIn);
   }

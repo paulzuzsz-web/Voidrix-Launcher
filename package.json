@@ -19,6 +19,15 @@
       },
       "notes": "",
       "autoCheck": true
+    },
+    "catalog": {
+      "url": "https://raw.githubusercontent.com/Voidrix-Launcher/Apps-Spiele/main/Games-Apps.json",
+      "autoSync": true,
+      "publish": {
+        "repo": "Voidrix-Launcher/Apps-Spiele",
+        "branch": "main",
+        "path": "Games-Apps.json"
+      }
     }
   },
   "private": true,

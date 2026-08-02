@@ -25,8 +25,10 @@ import {
   launchApp,
   pickExePath,
   revealApp,
+  publishApp,
   stopApp,
   uninstallApp,
+  unpublishApp,
 } from '../state.js';
 import { primaryAction, progressBox } from './cards.js';
 
@@ -77,6 +79,7 @@ export function renderDetail(view, { navigate, params }) {
                 : ''
             }
             ${!app.installed ? `<span class="badge badge--warn">${icon('warn')}Nicht installiert</span>` : ''}
+            ${app.source === 'remote' ? `<span class="badge badge--admin">${icon('globe')}Im Store</span>` : ''}
           </div>
           <h1 class="detail__title">${esc(app.title)}</h1>
           <div class="detail__by">
@@ -104,7 +107,11 @@ export function renderDetail(view, { navigate, params }) {
           }
           ${
             isAdmin()
-              ? `<button class="btn btn--icon btn--ghost" data-act="edit" title="Bearbeiten">${icon('edit')}</button>
+              ? `<button class="btn btn--icon btn--ghost" data-act="${app.source === 'remote' ? 'unpublish' : 'publish'}"
+                         title="${app.source === 'remote' ? 'Aus dem gemeinsamen Store zurückziehen' : 'Für alle veröffentlichen'}">
+                   ${icon('globe')}
+                 </button>
+                 <button class="btn btn--icon btn--ghost" data-act="edit" title="Bearbeiten">${icon('edit')}</button>
                  <button class="btn btn--icon btn--danger" data-act="delete" title="Löschen">${icon('trash')}</button>`
               : ''
           }
@@ -205,6 +212,8 @@ export function renderDetail(view, { navigate, params }) {
     install: () => installApp(app.id),
     cancel: () => cancelInstall(app.id),
     uninstall: () => uninstallApp(app.id),
+    publish: (btn) => publishApp(app.id, btn),
+    unpublish: (btn) => unpublishApp(app.id, btn),
     reveal: () => revealApp(app.id),
     pick: () => pickExePath(app.id, app.title),
     clear: () => clearExePath(app.id),

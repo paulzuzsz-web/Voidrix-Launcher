@@ -31,7 +31,25 @@ export function mediaUrl(ref) {
 export function img(ref, alt = '', cls = '') {
   const url = mediaUrl(ref);
   if (!url) return '';
-  return `<img src="${esc(url)}" alt="${esc(alt)}" class="${cls}" loading="lazy" onerror="this.remove()" />`;
+  // Kein onerror im HTML - das verbietet die CSP. Kaputte Bilder räumt
+  // watchBrokenImages() weg, siehe unten.
+  return `<img src="${esc(url)}" alt="${esc(alt)}" class="${cls}" loading="lazy" />`;
+}
+
+/**
+ * Bilder, die nicht geladen werden können (tote URL, gelöschte Datei),
+ * verschwinden - dann greift die farbige Ersatzdarstellung dahinter.
+ * error-Ereignisse steigen nicht auf, deshalb in der Capture-Phase.
+ */
+export function watchBrokenImages() {
+  document.addEventListener(
+    'error',
+    (event) => {
+      const el = event.target;
+      if (el instanceof HTMLImageElement) el.remove();
+    },
+    true
+  );
 }
 
 export function initials(name) {
