@@ -17,6 +17,9 @@ const EMPTY_CATALOG = { $schema: 'voidrix-catalog/1', version: 1, apps: [] };
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.bmp', '.svg']);
 const URI_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
 
+/** Dateien, die als startbares Programm gelten. */
+const EXE_EXTS = new Set(['.exe', '.bat', '.cmd', '.msi', '.jar', '.lnk', '.url', '.app', '.sh']);
+
 /** id -> { child, startedAt } für alles was gerade läuft. */
 const running = new Map();
 let runningListener = null;
@@ -157,15 +160,240 @@ function importMediaList(list, kind) {
 }
 
 /* --------------------------------------------------------------------- */
+/* Programme hochladen (Kopie in den Ordner spiele/)                      */
+/* --------------------------------------------------------------------- */
+
+/** Alle Dateien unterhalb eines Pfades samt Gesamtgröße. */
+function collectFiles(src) {
+  const stat = fs.statSync(src);
+  if (stat.isFile()) {
+    return { files: [{ abs: src, rel: path.basename(src), size: stat.size, mode: stat.mode }], bytes: stat.size };
+  }
+
+  const files = [];
+  let bytes = 0;
+  const walk = (dir, prefix) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const abs = path.join(dir, entry.name);
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(abs, rel);
+      else if (entry.isFile()) {
+        const info = fs.statSync(abs);
+        files.push({ abs, rel, size: info.size, mode: info.mode });
+        bytes += info.size;
+      }
+    }
+  };
+  walk(src, '');
+  return { files, bytes };
+}
+
+function freeSpace(dir) {
+  try {
+    const info = fs.statfsSync(dir);
+    return info.bavail * info.bsize;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+function formatBytes(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = Number(bytes) || 0;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+/** Freier Ordnername unterhalb von spiele/. */
+function uniqueGameDir(name) {
+  const base = slugify(name) || 'programm';
+  const games = store.ensureDir(store.gamesDir());
+  let candidate = path.join(games, base);
+  let n = 2;
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(games, `${base}-${n}`);
+    n++;
+  }
+  return candidate;
+}
+
+function copyFileStream(src, dest, onChunk) {
+  return new Promise((resolve, reject) => {
+    const read = fs.createReadStream(src);
+    const write = fs.createWriteStream(dest);
+    read.on('data', (chunk) => onChunk(chunk.length));
+    read.on('error', reject);
+    write.on('error', reject);
+    write.on('finish', resolve);
+    read.pipe(write);
+  });
+}
+
+/** Startbare Dateien in einem hochgeladenen Ordner finden. */
+function findExecutables(root) {
+  const { files } = collectFiles(root);
+  const isExecutable = (file) => {
+    const ext = path.extname(file.abs).toLowerCase();
+    if (EXE_EXTS.has(ext)) return true;
+    if (process.platform === 'win32' || ext) return false;
+    try {
+      return Boolean(fs.statSync(file.abs).mode & 0o111); // Unix: Ausführbar-Bit
+    } catch {
+      return false;
+    }
+  };
+
+  return files
+    .filter(isExecutable)
+    .sort((a, b) => {
+      // Flach liegende und große Dateien zuerst - das ist meist das Hauptprogramm.
+      const depth = a.rel.split('/').length - b.rel.split('/').length;
+      return depth !== 0 ? depth : b.size - a.size;
+    })
+    .slice(0, 40)
+    .map((f) => ({ rel: f.rel, size: f.size, sizeText: formatBytes(f.size) }));
+}
+
+/**
+ * Kopiert eine Programmdatei oder einen kompletten Spiel-Ordner nach
+ * <Datenordner>/spiele/<name>/ und liefert den neuen Pfad zurück.
+ *
+ * @param {{sourcePath: string, mode?: 'file'|'folder', title?: string}} input
+ * @param {(p: {percent:number, copied:number, total:number, file:string}) => void} onProgress
+ */
+async function uploadExecutable({ sourcePath, mode = 'file', title = '' }, onProgress = () => {}) {
+  const src = path.resolve(String(sourcePath || '').trim());
+  if (!src || !fs.existsSync(src)) throw new LibraryError(`Nicht gefunden: ${src}`);
+
+  const stat = fs.statSync(src);
+  const isFolder = stat.isDirectory();
+  if (mode === 'folder' && !isFolder) throw new LibraryError('Bitte einen Ordner auswählen.');
+  if (mode === 'file' && isFolder) throw new LibraryError('Bitte eine Datei auswählen.');
+
+  const gamesRoot = path.resolve(store.gamesDir());
+  if (src === gamesRoot || src.startsWith(gamesRoot + path.sep)) {
+    throw new LibraryError('Diese Dateien liegen bereits im Ordner spiele/.');
+  }
+
+  const { files, bytes } = collectFiles(src);
+  if (!files.length) throw new LibraryError('Der Ordner enthält keine Dateien.');
+
+  const available = freeSpace(store.dataDir());
+  if (bytes > available) {
+    throw new LibraryError(
+      `Zu wenig Speicherplatz: ${formatBytes(bytes)} werden gebraucht, frei sind ${formatBytes(available)}.`
+    );
+  }
+
+  const targetDir = uniqueGameDir(title || path.basename(src, path.extname(src)));
+  store.ensureDir(targetDir);
+
+  let copied = 0;
+  let lastReport = 0;
+  const report = (file, force = false) => {
+    const now = Date.now();
+    if (!force && now - lastReport < 120) return;
+    lastReport = now;
+    onProgress({
+      percent: bytes ? Math.min(100, Math.round((copied / bytes) * 100)) : 100,
+      copied,
+      total: bytes,
+      copiedText: formatBytes(copied),
+      totalText: formatBytes(bytes),
+      file,
+    });
+  };
+
+  report('', true);
+  try {
+    for (const file of files) {
+      const dest = path.join(targetDir, ...file.rel.split('/'));
+      store.ensureDir(path.dirname(dest));
+      await copyFileStream(file.abs, dest, (chunk) => {
+        copied += chunk;
+        report(file.rel);
+      });
+      // Rechte übernehmen, damit ausführbare Dateien ausführbar bleiben.
+      if (file.mode) {
+        try {
+          fs.chmodSync(dest, file.mode & 0o777);
+        } catch {
+          /* unter Windows nicht nötig */
+        }
+      }
+      report(file.rel, true);
+    }
+  } catch (err) {
+    // Halbe Kopie wieder wegräumen, damit nichts Kaputtes zurückbleibt.
+    fs.rmSync(targetDir, { recursive: true, force: true });
+    throw new LibraryError(`Hochladen fehlgeschlagen: ${err.message}`);
+  }
+
+  const folderRef = store.relativizeToData(targetDir);
+  const result = { folder: folderRef, bytes, sizeText: formatBytes(bytes), files: files.length };
+
+  if (!isFolder) {
+    return { ...result, exePath: `${folderRef}/${path.basename(src)}` };
+  }
+
+  const candidates = findExecutables(targetDir);
+  if (candidates.length === 1) {
+    return { ...result, exePath: `${folderRef}/${candidates[0].rel}` };
+  }
+  if (candidates.length > 1) {
+    // Mehrere Kandidaten: das UI fragt nach.
+    return { ...result, needsChoice: true, candidates };
+  }
+  throw new LibraryError(
+    `Der Ordner wurde nach ${folderRef} kopiert, enthält aber keine startbare Datei.\n` +
+      'Bitte den Pfad zur Programmdatei von Hand eintragen.'
+  );
+}
+
+/** Löscht die hochgeladenen Dateien eines Eintrags (nur innerhalb spiele/). */
+function removeUploadedFiles(entry) {
+  if (!entry || !entry.exePath || URI_RE.test(entry.exePath)) return false;
+  if (!store.isInsideGames(entry.exePath)) return false;
+
+  const games = path.resolve(store.gamesDir());
+  const abs = path.resolve(store.resolveDataPath(entry.exePath));
+  const rel = path.relative(games, abs);
+  const top = rel.split(path.sep)[0];
+  if (!top || top === '..' || top === '.') return false;
+
+  try {
+    fs.rmSync(path.join(games, top), { recursive: true, force: true });
+    return true;
+  } catch (err) {
+    throw new LibraryError(`Dateien konnten nicht gelöscht werden: ${err.message}`);
+  }
+}
+
+/* --------------------------------------------------------------------- */
 /* Abfragen                                                               */
 /* --------------------------------------------------------------------- */
+
+/**
+ * Absoluter Pfad zur Programmdatei.
+ * Hochgeladene Spiele stehen als "spiele/…" im Katalog und werden gegen den
+ * Datenordner aufgelöst - so überlebt der Eintrag auch einen Umzug.
+ */
+function resolveExe(entry) {
+  const p = String(entry?.exePath || '').trim();
+  if (!p || URI_RE.test(p)) return p;
+  return store.resolveDataPath(p);
+}
 
 function isInstalled(entry) {
   const p = String(entry.exePath || '').trim();
   if (!p) return false;
   if (URI_RE.test(p)) return true; // steam://, com.epicgames.launcher://, ...
   try {
-    return fs.existsSync(p);
+    return fs.existsSync(resolveExe(entry));
   } catch {
     return false;
   }
@@ -174,12 +402,16 @@ function isInstalled(entry) {
 /** Einträge inkl. Laufzeit-Infos für das UI. */
 function decorate(entry) {
   const state = running.get(entry.id);
+  const installed = isInstalled(entry);
   return {
     ...entry,
-    installed: isInstalled(entry),
+    installed,
     running: Boolean(state),
     runningSince: state ? state.startedAt : null,
-    exeExists: entry.exePath ? isInstalled(entry) : false,
+    exeExists: entry.exePath ? installed : false,
+    exeAbsolute: resolveExe(entry),
+    // true = die Dateien liegen im Launcher-Ordner spiele/
+    uploaded: Boolean(entry.exePath) && !URI_RE.test(entry.exePath) && store.isInsideGames(entry.exePath),
   };
 }
 
@@ -239,6 +471,12 @@ function saveEntry(input, user) {
     cover: importMedia(input.cover ?? existing?.cover ?? '', 'cover'),
     icon: importMedia(input.icon ?? existing?.icon ?? '', 'icons'),
     screenshots: importMediaList(input.screenshots ?? existing?.screenshots ?? [], 'screenshots'),
+    // Pfade im Datenordner relativ speichern (überlebt einen Umzug).
+    exePath: (() => {
+      const value = String(input.exePath ?? existing?.exePath ?? '').trim();
+      return URI_RE.test(value) ? value : store.relativizeToData(value);
+    })(),
+    workingDir: store.relativizeToData(String(input.workingDir ?? existing?.workingDir ?? '').trim()),
     tags: Array.isArray(input.tags)
       ? input.tags
       : String(input.tags || '')
@@ -269,14 +507,22 @@ function splitArgs(value) {
   return out;
 }
 
-function deleteEntry(id) {
+/**
+ * Entfernt einen Eintrag. Mit `withFiles` werden auch die hochgeladenen
+ * Dateien im Ordner spiele/ gelöscht (nie etwas außerhalb davon).
+ */
+function deleteEntry(id, { withFiles = false } = {}) {
   const data = readCatalog();
-  const before = data.apps.length;
+  const entry = data.apps.find((a) => a.id === id);
+  if (!entry) throw new LibraryError('Eintrag nicht gefunden.');
+
+  let filesRemoved = false;
+  if (withFiles) filesRemoved = removeUploadedFiles(entry);
+
   data.apps = data.apps.filter((a) => a.id !== id);
-  if (data.apps.length === before) throw new LibraryError('Eintrag nicht gefunden.');
   store.backupCatalog(); // Sicherung vor dem Löschen
   writeCatalog(data);
-  return true;
+  return { removed: true, filesRemoved };
 }
 
 /** Speichert den .exe-Pfad - der Kern von "installiert oder nicht". */
@@ -284,7 +530,9 @@ function setExePath(id, exePath) {
   const data = readCatalog();
   const entry = data.apps.find((a) => a.id === id);
   if (!entry) throw new LibraryError('Eintrag nicht gefunden.');
-  entry.exePath = String(exePath || '').trim();
+  const value = String(exePath || '').trim();
+  // Liegt die Datei im Datenordner, wird der Pfad relativ gespeichert.
+  entry.exePath = URI_RE.test(value) ? value : store.relativizeToData(value);
   entry.updatedAt = new Date().toISOString();
   writeCatalog(data);
   return decorate(entry);
@@ -327,10 +575,11 @@ async function launch(id) {
   const entry = readCatalog().apps.find((a) => a.id === id);
   if (!entry) throw new LibraryError('Eintrag nicht gefunden.');
 
-  const target = String(entry.exePath || '').trim();
+  // Relative Pfade (hochgeladene Spiele) gegen den Datenordner auflösen.
+  const target = resolveExe(entry);
   if (!target) {
     throw new LibraryError(
-      'Für diesen Eintrag ist noch kein Pfad hinterlegt. Trage die .exe in Games-Apps.json ein oder wähle sie über "Pfad festlegen".'
+      'Für diesen Eintrag ist noch kein Pfad hinterlegt. Lade die .exe hoch oder wähle sie über "Pfad festlegen".'
     );
   }
 
@@ -354,9 +603,8 @@ async function launch(id) {
     return markLaunched(id, null);
   }
 
-  const cwd = entry.workingDir && fs.existsSync(entry.workingDir)
-    ? entry.workingDir
-    : path.dirname(target);
+  const workDir = entry.workingDir ? store.resolveDataPath(entry.workingDir) : '';
+  const cwd = workDir && fs.existsSync(workDir) ? workDir : path.dirname(target);
 
   let child;
   try {
@@ -438,8 +686,9 @@ function revealInFolder(id) {
   const entry = readCatalog().apps.find((a) => a.id === id);
   if (!entry || !entry.exePath) throw new LibraryError('Kein Pfad hinterlegt.');
   if (URI_RE.test(entry.exePath)) throw new LibraryError('Dieser Eintrag hat keinen lokalen Ordner.');
-  if (!fs.existsSync(entry.exePath)) throw new LibraryError('Der hinterlegte Pfad existiert nicht mehr.');
-  shell.showItemInFolder(entry.exePath);
+  const abs = resolveExe(entry);
+  if (!fs.existsSync(abs)) throw new LibraryError('Der hinterlegte Pfad existiert nicht mehr.');
+  shell.showItemInFolder(abs);
   return true;
 }
 
@@ -449,6 +698,7 @@ module.exports = {
   decorate,
   deleteEntry,
   getApp,
+  formatBytes,
   importMedia,
   isInstalled,
   launch,
@@ -456,10 +706,13 @@ module.exports = {
   onRunningChanged,
   patchEntry,
   readCatalog,
+  removeUploadedFiles,
+  resolveExe,
   resolveMediaPath,
   revealInFolder,
   saveEntry,
   setExePath,
   stop,
+  uploadExecutable,
   writeCatalog,
 };

@@ -2,7 +2,7 @@
  * Gemeinsamer Zustand des UI + alle Aktionen die den Katalog verändern.
  */
 
-import { toast, toastError, toastOk, withBusy, confirmDialog } from './ui.js';
+import { confirmDialog, modal, toast, toastError, toastOk, withBusy } from './ui.js';
 
 const vx = window.voidrix;
 
@@ -154,17 +154,36 @@ export async function revealApp(id) {
 
 export async function deleteApp(id) {
   const app = getApp(id);
-  const ok = await confirmDialog({
-    title: `"${app?.title || 'Eintrag'}" löschen?`,
-    text: 'Der Eintrag wird aus Games-Apps.json entfernt. Die Spieldateien auf der Festplatte bleiben unberührt.',
-    confirmLabel: 'Endgültig löschen',
-    danger: true,
-  });
-  if (!ok) return false;
+
+  // Bei hochgeladenen Titeln zusätzlich anbieten, die Dateien mitzulöschen.
+  const choice = app?.uploaded
+    ? await modal({
+        title: `"${app.title}" löschen?`,
+        text:
+          'Die Dateien dieses Titels liegen im Launcher-Ordner:\n' +
+          `${app.exePath}\n\n` +
+          'Sollen sie mitgelöscht werden?',
+        actions: [
+          { label: 'Abbrechen', className: 'btn--ghost', value: 'cancel' },
+          { label: 'Nur Eintrag löschen', className: 'btn--ghost', value: 'entry' },
+          { label: 'Eintrag + Dateien löschen', className: 'btn--danger', value: 'files' },
+        ],
+      })
+    : (await confirmDialog({
+        title: `"${app?.title || 'Eintrag'}" löschen?`,
+        text: 'Der Eintrag wird aus Games-Apps.json entfernt. Die Spieldateien auf der Festplatte bleiben unberührt.',
+        confirmLabel: 'Endgültig löschen',
+        danger: true,
+      }))
+        ? 'entry'
+        : 'cancel';
+
+  if (!choice || choice === 'cancel') return false;
+
   try {
-    await vx.library.remove(id);
+    const result = await vx.library.remove(id, choice === 'files');
     await loadApps();
-    toastOk('Eintrag gelöscht.');
+    toastOk(result?.filesRemoved ? 'Eintrag und Dateien gelöscht.' : 'Eintrag gelöscht.');
     return true;
   } catch (err) {
     toastError(err.message);

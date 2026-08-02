@@ -153,6 +153,15 @@ export function renderDetail(view, { navigate, params }) {
           <div class="mono pathbox__value ${app.exePath && !app.installed ? 'is-missing' : ''}">
             ${esc(app.exePath || 'Noch kein Pfad hinterlegt')}
           </div>
+          ${
+            app.exePath
+              ? `<div class="field__hint" style="margin-top:6px">${
+                  app.uploaded
+                    ? `${icon('upload')} In den Launcher hochgeladen (Ordner spiele/)`
+                    : `${icon('link')} Nur verknüpft — liegt außerhalb des Launchers`
+                }</div>`
+              : ''
+          }
         </div>
 
         <div class="modal__actions" style="justify-content:flex-start;margin-top:14px">

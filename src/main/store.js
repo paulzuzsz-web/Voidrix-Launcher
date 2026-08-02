@@ -285,8 +285,43 @@ function migrateData(from, to) {
 
   copyTree(path.join(from, DIRS.media), path.join(to, DIRS.media));
   copyTree(path.join(from, DIRS.backups), path.join(to, DIRS.backups));
+  // Hochgeladene Spiele ziehen mit um, sonst zeigen die Einträge ins Leere.
+  copyTree(path.join(from, DIRS.games), path.join(to, DIRS.games));
 
   return count;
+}
+
+/* --------------------------------------------------------------------- */
+/* Pfade innerhalb des Datenordners                                       */
+/* --------------------------------------------------------------------- */
+
+/**
+ * Macht aus einem absoluten Pfad im Datenordner einen relativen
+ * (z.B. "spiele/arena/Arena.exe"). Alles außerhalb bleibt unverändert.
+ * So bleibt der Katalog auch nach einem Umzug gültig.
+ */
+function relativizeToData(value) {
+  const input = String(value || '').trim();
+  if (!input || !path.isAbsolute(input)) return input;
+  const root = path.resolve(dataDir());
+  const abs = path.resolve(input);
+  if (abs !== root && !abs.startsWith(root + path.sep)) return input;
+  return path.relative(root, abs).split(path.sep).join('/');
+}
+
+/** Gegenstück zu relativizeToData: liefert immer einen absoluten Pfad. */
+function resolveDataPath(value) {
+  const input = String(value || '').trim();
+  if (!input) return '';
+  if (path.isAbsolute(input)) return input;
+  return path.resolve(dataDir(), input);
+}
+
+/** Liegt der Pfad im Ordner spiele/ des Datenordners? */
+function isInsideGames(value) {
+  const abs = path.resolve(resolveDataPath(value));
+  const games = path.resolve(gamesDir());
+  return abs.startsWith(games + path.sep);
 }
 
 /* --------------------------------------------------------------------- */
@@ -466,11 +501,14 @@ module.exports = {
   fileExists,
   gamesDir,
   isConfigured,
+  isInsideGames,
   isWritableDir,
   mediaDir,
   mediaKindDir,
   paths,
   readJson,
+  relativizeToData,
+  resolveDataPath,
   sessionPath,
   setDataRoot,
   suggestDataRoot,

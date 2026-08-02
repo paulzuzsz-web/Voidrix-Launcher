@@ -210,6 +210,17 @@ function prepareDataFolder() {
   auth.ensureAdminAccount();
 }
 
+/** Startordner für Dateidialoge: zum Hochladen die Downloads, sonst spiele/. */
+function startDir(kind) {
+  try {
+    if (kind === 'downloads') return app.getPath('downloads');
+  } catch {
+    /* nicht überall vorhanden */
+  }
+  const games = store.gamesDir();
+  return store.isWritableDir(games) ? games : undefined;
+}
+
 function setupStatus() {
   const configured = store.isConfigured();
   return {
@@ -407,9 +418,22 @@ function registerIpc() {
 
   handle(
     'library:delete',
-    ({ id }) => {
-      const result = library.deleteEntry(id);
+    ({ id, withFiles }) => {
+      const result = library.deleteEntry(id, { withFiles: Boolean(withFiles) });
       broadcast('library:changed', { reason: 'delete', id });
+      return result;
+    },
+    { admin: true }
+  );
+
+  /** Programmdatei oder ganzen Spiel-Ordner in den Ordner spiele/ kopieren. */
+  handle(
+    'library:upload',
+    async ({ sourcePath, mode, title }, event) => {
+      const result = await library.uploadExecutable({ sourcePath, mode, title }, (progress) => {
+        if (!event.sender.isDestroyed()) event.sender.send('library:upload-progress', progress);
+      });
+      broadcast('library:changed', { reason: 'upload' });
       return result;
     },
     { admin: true }
@@ -432,7 +456,7 @@ function registerIpc() {
   /* ---------- Dialoge / System ---------- */
   handle(
     'dialog:pickExecutable',
-    async ({ title } = {}) => {
+    async ({ title, start } = {}) => {
       const filters =
         process.platform === 'win32'
           ? [
@@ -441,10 +465,9 @@ function registerIpc() {
             ]
           : [{ name: 'Alle Dateien', extensions: ['*'] }];
 
-      const games = store.gamesDir();
       const result = await dialog.showOpenDialog(mainWindow, {
         title: title || 'Programmdatei auswählen',
-        defaultPath: store.fileExists(games) || store.isWritableDir(games) ? games : undefined,
+        defaultPath: startDir(start),
         properties: ['openFile', 'dontAddToRecent'],
         filters,
       });
@@ -471,9 +494,10 @@ function registerIpc() {
 
   handle(
     'dialog:pickFolder',
-    async () => {
+    async ({ start } = {}) => {
       const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Ordner auswählen',
+        defaultPath: startDir(start),
         properties: ['openDirectory'],
       });
       return result.canceled ? null : result.filePaths[0];

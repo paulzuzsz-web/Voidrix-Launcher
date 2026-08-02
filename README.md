@@ -8,6 +8,9 @@ Gebaut mit Electron, komplett offline, alle Daten bleiben auf dem eigenen PC.
 * **Konten**: Registrieren mit Benutzername, Profilname, Passwort + Wiederholung. Wer sich einmal
   angemeldet hat, bleibt auch nach einem Neustart des Launchers angemeldet.
 * **Store & Bibliothek**: Hero-Karussell, Karten mit Cover, Detailseiten mit Banner, Screenshots und Infos.
+* **Hochladen statt verlinken**: Die `.exe` oder gleich den ganzen Spiel-Ordner hochladen — die
+  Dateien werden nach `spiele/` kopiert und von dort gestartet. Wer will, verknüpft stattdessen
+  einfach den Pfad, wo das Spiel schon liegt.
 * **Starten**: In `Games-Apps.json` steht bei jedem Titel der Pfad zur `.exe`. Existiert die Datei,
   gilt der Titel als installiert und lässt sich mit einem Klick starten.
 * **Admin**: Games und Apps direkt im Launcher hochladen — mit Banner, Cover, Profilbild,
@@ -71,7 +74,7 @@ diese Struktur:
 │   ├── icons/           Logos / Profilbilder der Titel
 │   ├── screenshots/     Screenshots der Detailseite
 │   └── profilbilder/    Profilbilder der Benutzer
-├── spiele/              freier Platz für eigene Installationen
+├── spiele/              hochgeladene Spiele und Apps (ein Ordner je Titel)
 ├── sicherungen/         automatische Kopien der Games-Apps.json
 └── LIESMICH.txt         kurze Erklärung im Ordner selbst
 ```
@@ -135,7 +138,7 @@ die Umgebungsvariable `VOIDRIX_CATALOG` auf einen eigenen Pfad.
 | `id`                        | Eindeutige Kennung. Fehlt sie, wird sie automatisch erzeugt.                         |
 | `title`                     | Angezeigter Name (Pflicht).                                                          |
 | `type`                      | `game` oder `app`.                                                                   |
-| `exePath`                   | **Der Pfad zur `.exe`.** Backslashes in JSON doppelt schreiben: `C:\\Spiele\\x.exe`   |
+| `exePath`                   | **Der Pfad zur `.exe`.** Hochgeladene Titel stehen relativ zum Datenordner (`spiele/arena/Arena.exe`), verknüpfte absolut — Backslashes in JSON doppelt: `C:\\Spiele\\x.exe` |
 | `args`                      | Startparameter als Liste, z. B. `["-fullscreen", "-novid"]`.                          |
 | `workingDir`                | Arbeitsverzeichnis; leer = Ordner der `.exe`.                                         |
 | `banner` / `cover` / `icon` | Bilder: `media/banner/datei.png`, absoluter Pfad oder `https://…`                     |
@@ -171,12 +174,20 @@ Im Bereich **Hochladen**:
 2. Bilder wählen — Banner (16:9), Cover (3:4), Profilbild und beliebig viele Screenshots.
    Gewählte Dateien landen im passenden Unterordner von `media/`, alternativ funktioniert eine
    `https://`-URL.
-3. Pfad zur `.exe` setzen (Dateidialog oder von Hand eintippen), optional Startparameter.
+3. Programmdatei festlegen — drei Wege:
+   * **`.exe` hochladen** — kopiert die Datei nach `spiele/<titel>/`.
+   * **Ordner hochladen** — kopiert einen kompletten Spiel-Ordner (mit DLLs, Assets …) dorthin.
+     Liegen mehrere `.exe` darin, fragt der Launcher, welche startet. Während des Kopierens läuft
+     eine Fortschrittsanzeige; bei zu wenig Speicherplatz bricht er vorher ab.
+   * **Nur verknüpfen** — merkt sich bloß den Pfad, wo das Spiel schon liegt.
+
+   Dazu optional Startparameter und Arbeitsverzeichnis.
 4. Akzentfarbe wählen und bei Bedarf „Im Hero-Karussell zeigen“ ankreuzen.
 5. **Jetzt hochladen** — der Eintrag landet direkt in `Games-Apps.json`.
 
 Rechts läuft eine Live-Vorschau der Store-Karte mit. Bestehende Einträge lassen sich unten in der
-Liste bearbeiten oder löschen; unter **Benutzer** verwaltet man Konten und Rollen.
+Liste bearbeiten oder löschen; beim Löschen eines hochgeladenen Titels fragt der Launcher, ob die
+Dateien in `spiele/` mitgelöscht werden sollen. Unter **Benutzer** verwaltet man Konten und Rollen.
 
 ## Tastenkürzel
 

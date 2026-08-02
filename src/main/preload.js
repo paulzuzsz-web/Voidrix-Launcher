@@ -62,19 +62,21 @@ contextBridge.exposeInMainWorld('voidrix', {
     get: (id) => call('library:get', { id }),
     info: () => call('library:info'),
     save: (entry) => call('library:save', entry),
-    remove: (id) => call('library:delete', { id }),
+    remove: (id, withFiles = false) => call('library:delete', { id, withFiles }),
     setExePath: (id, exePath) => call('library:setExePath', { id, exePath }),
     launch: (id) => call('library:launch', { id }),
     stop: (id) => call('library:stop', { id }),
     reveal: (id) => call('library:reveal', { id }),
+    upload: ({ sourcePath, mode, title }) => call('library:upload', { sourcePath, mode, title }),
+    onUploadProgress: (cb) => on('library:upload-progress', cb),
     onChanged: (cb) => on('library:changed', cb),
     onRunning: (cb) => on('library:running', cb),
   },
 
   dialog: {
-    pickExecutable: (title) => call('dialog:pickExecutable', { title }),
+    pickExecutable: (title, start) => call('dialog:pickExecutable', { title, start }),
     pickImage: (multiple = false, kind = 'sonstiges') => call('dialog:pickImage', { multiple, kind }),
-    pickFolder: () => call('dialog:pickFolder'),
+    pickFolder: (start) => call('dialog:pickFolder', { start }),
   },
 
   shell: {

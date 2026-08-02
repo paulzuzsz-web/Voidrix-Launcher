@@ -3,7 +3,7 @@
  * Links das Formular, rechts eine Live-Vorschau der Store-Karte.
  */
 
-import { $, $$, esc, icon, img, initials, mediaUrl, toastError, toastOk, withBusy } from '../ui.js';
+import { $, $$, esc, icon, img, initials, mediaUrl, modal, toast, toastError, toastOk, withBusy } from '../ui.js';
 import { deleteApp, getApp, saveApp, state } from '../state.js';
 
 const vx = window.voidrix;
@@ -174,15 +174,33 @@ export function renderAdmin(view, { navigate, params }) {
           <div class="form-card__title">${icon('play')} Start &amp; Installation</div>
 
           <div class="field">
-            <label class="field__label" for="a-exe">Pfad zur .exe</label>
-            <div class="input-group">
-              <input class="input mono" id="a-exe" name="exePath" value="${esc(data.exePath)}" spellcheck="false"
-                     placeholder="C:\\Games\\VoidrixArena\\Arena.exe" />
-              <button type="button" class="btn btn--sm" data-pick-exe>${icon('folder')}Datei wählen</button>
+            <label class="field__label" for="a-exe">Programmdatei (.exe)</label>
+            <input class="input mono" id="a-exe" name="exePath" value="${esc(data.exePath)}" spellcheck="false"
+                   placeholder="Datei hochladen oder Pfad eintragen" />
+
+            <div class="upload-actions">
+              <button type="button" class="btn btn--sm btn--primary" data-upload="file">
+                ${icon('upload')}.exe hochladen
+              </button>
+              <button type="button" class="btn btn--sm" data-upload="folder">
+                ${icon('folder')}Ordner hochladen
+              </button>
+              <button type="button" class="btn btn--sm btn--ghost" data-pick-exe>
+                ${icon('link')}Nur verknüpfen
+              </button>
             </div>
+
+            <div class="upload-progress" id="upload-progress" hidden>
+              <div class="upload-progress__bar"><span></span></div>
+              <div class="upload-progress__text mono">Wird kopiert…</div>
+            </div>
+
             <div class="field__hint">
-              Genau dieser Wert landet in <span class="mono">Games-Apps.json</span>. Existiert die Datei,
-              gilt der Titel als installiert und lässt sich starten. Auch <span class="mono">steam://</span>-Links sind erlaubt.
+              <strong>Hochladen</strong> kopiert die Dateien in den Ordner
+              <span class="mono">spiele/</span> im Datenordner — der Eintrag läuft dann unabhängig
+              vom Original. Bei Spielen mit mehreren Dateien den ganzen Ordner hochladen.
+              <strong>Nur verknüpfen</strong> merkt sich bloß den Pfad, wo das Spiel schon liegt.
+              Auch <span class="mono">steam://</span>-Links sind erlaubt.
             </div>
           </div>
 
@@ -331,6 +349,96 @@ export function renderAdmin(view, { navigate, params }) {
   };
   renderShots();
 
+  /* ------------------------- Hochladen ----------------------------- */
+  const progressBox = $('#upload-progress', view);
+  const progressBar = $('.upload-progress__bar span', view);
+  const progressText = $('.upload-progress__text', view);
+
+  const showProgress = (p) => {
+    progressBox.hidden = false;
+    progressBar.style.width = `${p.percent}%`;
+    progressText.textContent = p.file
+      ? `${p.percent}% — ${p.copiedText} von ${p.totalText} · ${p.file}`
+      : `${p.percent}% — ${p.copiedText} von ${p.totalText}`;
+  };
+
+  const stopProgress = vx.library.onUploadProgress(showProgress);
+
+  /** Datei bzw. Ordner auswählen, kopieren lassen und den Pfad eintragen. */
+  async function uploadProgram(mode, button) {
+    const source =
+      mode === 'folder'
+        ? await vx.dialog.pickFolder('downloads').catch(() => null)
+        : await vx.dialog.pickExecutable('Programmdatei zum Hochladen wählen', 'downloads').catch(() => null);
+    if (!source) return;
+
+    progressBox.hidden = false;
+    progressBar.style.width = '0%';
+    progressText.textContent = 'Wird vorbereitet…';
+
+    await withBusy(button, async () => {
+      try {
+        const result = await vx.library.upload({
+          sourcePath: source,
+          mode,
+          title: form.elements.title.value.trim(),
+        });
+
+        let exePath = result.exePath;
+        if (result.needsChoice) {
+          const chosen = await chooseExecutable(result.candidates);
+          if (!chosen) {
+            toast(`Dateien liegen in ${result.folder}. Startdatei bitte noch eintragen.`, {
+              type: 'info',
+              title: 'Hochgeladen',
+            });
+            return;
+          }
+          exePath = `${result.folder}/${chosen}`;
+        }
+
+        form.elements.exePath.value = exePath;
+        toastOk(
+          `${result.files} Datei(en), ${result.sizeText}\nliegt jetzt in ${result.folder}`,
+          'Hochgeladen'
+        );
+      } catch (err) {
+        toastError(err.message, 'Hochladen fehlgeschlagen');
+      } finally {
+        setTimeout(() => {
+          progressBox.hidden = true;
+        }, 900);
+      }
+    });
+  }
+
+  /** Mehrere .exe im Ordner: den Anwender wählen lassen. */
+  function chooseExecutable(candidates) {
+    return modal({
+      title: 'Welche Datei startet das Programm?',
+      text: 'Im hochgeladenen Ordner liegen mehrere ausführbare Dateien.',
+      html: `<div class="admin-list">${candidates
+        .map(
+          (c, i) => `
+        <button type="button" class="admin-item" data-exe="${i}" style="width:100%;text-align:left;cursor:pointer">
+          <div class="admin-item__thumb">${icon('play')}</div>
+          <div class="admin-item__body">
+            <div class="admin-item__title mono">${esc(c.rel)}</div>
+            <div class="admin-item__path">${esc(c.sizeText)}</div>
+          </div>
+        </button>`
+        )
+        .join('')}</div>`,
+      wide: true,
+      actions: [{ label: 'Später eintragen', className: 'btn--ghost', value: null }],
+      onMount: (root, close) => {
+        $$('[data-exe]', root).forEach((btn) =>
+          btn.addEventListener('click', () => close(candidates[Number(btn.dataset.exe)].rel))
+        );
+      },
+    });
+  }
+
   /* --------------------------- Dialoge ----------------------------- */
   view.addEventListener('click', async (event) => {
     const pick = event.target.closest('[data-pick]');
@@ -350,6 +458,12 @@ export function renderAdmin(view, { navigate, params }) {
         screenshots.push(...refs);
         renderShots();
       }
+      return;
+    }
+
+    const upload = event.target.closest('[data-upload]');
+    if (upload) {
+      await uploadProgram(upload.dataset.upload === 'folder' ? 'folder' : 'file', upload);
       return;
     }
 
@@ -412,5 +526,5 @@ export function renderAdmin(view, { navigate, params }) {
   });
 
   refreshPreview();
-  return () => {};
+  return () => stopProgress();
 }
