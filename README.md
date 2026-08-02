@@ -8,9 +8,11 @@ Gebaut mit Electron, komplett offline, alle Daten bleiben auf dem eigenen PC.
 * **Konten**: Registrieren mit Benutzername, Profilname, Passwort + Wiederholung. Wer sich einmal
   angemeldet hat, bleibt auch nach einem Neustart des Launchers angemeldet.
 * **Store & Bibliothek**: Hero-Karussell, Karten mit Cover, Detailseiten mit Banner, Screenshots und Infos.
-* **Hochladen statt verlinken**: Die `.exe` oder gleich den ganzen Spiel-Ordner hochladen — die
-  Dateien werden nach `spiele/` kopiert und von dort gestartet. Wer will, verknüpft stattdessen
-  einfach den Pfad, wo das Spiel schon liegt.
+* **Veröffentlichen per Link**: Beim Anlegen eines Titels einfach die Adresse der Datei eintragen
+  (z. B. ein GitHub-Release). Jeder Nutzer sieht dann **Installieren**, die Datei wird mit
+  Fortschrittsanzeige heruntergeladen, ZIPs werden automatisch entpackt — danach startbereit.
+* **Oder hochladen**: Die `.exe` bzw. den ganzen Spiel-Ordner direkt hochladen — die Dateien werden
+  nach `spiele/` kopiert. Wer will, verknüpft stattdessen nur den Pfad, wo das Spiel schon liegt.
 * **Starten**: In `Games-Apps.json` steht bei jedem Titel der Pfad zur `.exe`. Existiert die Datei,
   gilt der Titel als installiert und lässt sich mit einem Klick starten.
 * **Admin**: Games und Apps direkt im Launcher hochladen — mit Banner, Cover, Profilbild,
@@ -120,6 +122,7 @@ die Umgebungsvariable `VOIDRIX_CATALOG` auf einen eigenen Pfad.
       "size": "24 GB",
       "releaseDate": "2026-03-18",
       "price": "Kostenlos",
+      "downloadUrl": "https://github.com/USER/REPO/releases/download/v1.4.2/VoidrixArena.zip",
       "exePath": "C:\\Games\\VoidrixArena\\Arena.exe",
       "args": ["-fullscreen"],
       "workingDir": "",
@@ -138,6 +141,7 @@ die Umgebungsvariable `VOIDRIX_CATALOG` auf einen eigenen Pfad.
 | `id`                        | Eindeutige Kennung. Fehlt sie, wird sie automatisch erzeugt.                         |
 | `title`                     | Angezeigter Name (Pflicht).                                                          |
 | `type`                      | `game` oder `app`.                                                                   |
+| `downloadUrl`               | **Link zur Datei** (`.exe`, `.msi`, `.zip` …), z. B. ein GitHub-Release. Der Launcher lädt sie herunter und trägt `exePath` selbst ein. |
 | `exePath`                   | **Der Pfad zur `.exe`.** Hochgeladene Titel stehen relativ zum Datenordner (`spiele/arena/Arena.exe`), verknüpfte absolut — Backslashes in JSON doppelt: `C:\\Spiele\\x.exe` |
 | `args`                      | Startparameter als Liste, z. B. `["-fullscreen", "-novid"]`.                          |
 | `workingDir`                | Arbeitsverzeichnis; leer = Ordner der `.exe`.                                         |
@@ -148,11 +152,37 @@ die Umgebungsvariable `VOIDRIX_CATALOG` auf einen eigenen Pfad.
 | `tags`, `version`, `size`, `price`, `releaseDate`, `developer`, `publisher`, `website` | reine Anzeigedaten |
 
 **Installiert oder nicht?** Der Launcher prüft schlicht, ob die Datei unter `exePath` existiert.
-Ist das Feld leer, zeigt die Karte „Kein Pfad“ und bietet den Knopf **Pfad festlegen** an — der
-gewählte Pfad wird sofort in `Games-Apps.json` gespeichert.
+Ist das Feld leer und ein `downloadUrl` gesetzt, zeigt die Karte **Verfügbar** und den Knopf
+**Installieren**. Ohne beides steht dort „Kein Pfad“ mit dem Knopf **Pfad festlegen** — der gewählte
+Pfad wird sofort in `Games-Apps.json` gespeichert.
 
 Statt eines Dateipfads sind auch Protokoll-Links erlaubt, etwa `steam://rungameid/440` oder
 `com.epicgames.launcher://apps/...`.
+
+---
+
+## Titel per Download-Link veröffentlichen
+
+Der bequemste Weg: die Datei irgendwo ablegen (GitHub-Release, eigener Webspace …) und im Launcher
+nur den Link eintragen.
+
+1. **Hochladen** → Feld **Download-Link**, z. B.
+   `https://github.com/Voidrix-Launcher/Apps-Spiele/releases/download/Voidrix-Client-Editon/VoidrixClient.exe`
+2. **Link prüfen** zeigt Dateiname und Größe an, bevor du speicherst.
+3. Speichern — fertig. Im Store steht der Titel jetzt als **Verfügbar**.
+
+Was beim Klick auf **Installieren** passiert:
+
+* Die Datei wird nach `spiele/<titel>/` geladen — mit Fortschritt, Tempo und **Abbrechen**-Knopf.
+  Ein Abbruch räumt die halbe Datei restlos weg.
+* Ist es ein **`.zip`**, wird es automatisch entpackt und die passende `.exe` gesucht
+  (Installer- und Uninstaller-Dateien werden dabei übersprungen). Das Archiv selbst wird gelöscht.
+* `exePath`, Größe und Installationsdatum trägt der Launcher selbst in `Games-Apps.json` ein.
+* Danach heißt der Knopf **Starten**. Über das Papierkorb-Symbol auf der Detailseite lässt sich der
+  Titel wieder **deinstallieren** — die Dateien verschwinden, der Eintrag bleibt.
+
+Vor dem Download wird der freie Speicherplatz geprüft; ist die Datei größer, bricht der Launcher mit
+einer klaren Meldung ab, statt die Platte vollzuschreiben.
 
 ---
 
@@ -174,7 +204,9 @@ Im Bereich **Hochladen**:
 2. Bilder wählen — Banner (16:9), Cover (3:4), Profilbild und beliebig viele Screenshots.
    Gewählte Dateien landen im passenden Unterordner von `media/`, alternativ funktioniert eine
    `https://`-URL.
-3. Programmdatei festlegen — drei Wege:
+3. Programmdatei festlegen — vier Wege:
+   * **Download-Link** (empfohlen) — nur die Adresse eintragen, den Rest macht der Launcher beim
+     Installieren. Siehe Abschnitt oben.
    * **`.exe` hochladen** — kopiert die Datei nach `spiele/<titel>/`.
    * **Ordner hochladen** — kopiert einen kompletten Spiel-Ordner (mit DLLs, Assets …) dorthin.
      Liegen mehrere `.exe` darin, fragt der Launcher, welche startet. Während des Kopierens läuft

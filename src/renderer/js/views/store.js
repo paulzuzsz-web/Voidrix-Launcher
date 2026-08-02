@@ -4,7 +4,7 @@
 
 import { $, $$, esc, icon, img, initials } from '../ui.js';
 import { isAdmin, state, visibleApps } from '../state.js';
-import { appCard, bindCards, primaryLabel } from './cards.js';
+import { appCard, bindCards, primaryAction, progressBox } from './cards.js';
 
 const HERO_INTERVAL = 7000;
 
@@ -24,12 +24,12 @@ function heroSlide(app, index) {
       <h2 class="hero__title">${esc(app.title)}</h2>
       <p class="hero__desc">${esc(app.shortDescription || app.description || '')}</p>
       <div class="hero__actions">
-        <button class="btn ${app.installed && !app.running ? 'btn--play' : 'btn--primary'} btn--lg"
-                data-act="primary" data-id="${esc(app.id)}">
-          ${icon(app.running ? 'stop' : app.installed ? 'play' : 'folder')}${esc(primaryLabel(app))}
+        <button class="btn ${primaryAction(app).style} btn--lg" data-act="primary" data-id="${esc(app.id)}">
+          ${icon(primaryAction(app).icon)}${esc(primaryAction(app).label)}
         </button>
         <button class="btn btn--lg btn--ghost" data-act="open" data-id="${esc(app.id)}">Details ansehen</button>
       </div>
+      ${progressBox(app, 'progress--hero')}
     </div>
   </div>`;
 }

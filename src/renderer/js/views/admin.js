@@ -31,6 +31,7 @@ const EMPTY = {
   icon: '',
   screenshots: [],
   exePath: '',
+  downloadUrl: '',
   args: [],
   workingDir: '',
   website: '',
@@ -174,6 +175,21 @@ export function renderAdmin(view, { navigate, params }) {
           <div class="form-card__title">${icon('play')} Start &amp; Installation</div>
 
           <div class="field">
+            <label class="field__label" for="a-url">Download-Link (empfohlen)</label>
+            <div class="input-group">
+              <input class="input mono" id="a-url" name="downloadUrl" value="${esc(data.downloadUrl)}"
+                     spellcheck="false"
+                     placeholder="https://github.com/…/releases/download/v1.0/VoidrixClient.exe" />
+              <button type="button" class="btn btn--sm" data-check-url>${icon('refresh')}Link prüfen</button>
+            </div>
+            <div class="field__hint" id="url-info">
+              Direkter Link zur .exe oder zu einem .zip — z. B. aus einem GitHub-Release. Jeder Nutzer
+              sieht dann im Store den Knopf <strong>Installieren</strong>: die Datei wird heruntergeladen,
+              ZIPs werden automatisch entpackt, danach ist der Titel startbereit.
+            </div>
+          </div>
+
+          <div class="field">
             <label class="field__label" for="a-exe">Programmdatei (.exe)</label>
             <input class="input mono" id="a-exe" name="exePath" value="${esc(data.exePath)}" spellcheck="false"
                    placeholder="Datei hochladen oder Pfad eintragen" />
@@ -196,6 +212,7 @@ export function renderAdmin(view, { navigate, params }) {
             </div>
 
             <div class="field__hint">
+              Nur nötig, wenn du <em>keinen</em> Download-Link nutzt.
               <strong>Hochladen</strong> kopiert die Dateien in den Ordner
               <span class="mono">spiele/</span> im Datenordner — der Eintrag läuft dann unabhängig
               vom Original. Bei Spielen mit mehreren Dateien den ganzen Ordner hochladen.
@@ -458,6 +475,28 @@ export function renderAdmin(view, { navigate, params }) {
         screenshots.push(...refs);
         renderShots();
       }
+      return;
+    }
+
+    const check = event.target.closest('[data-check-url]');
+    if (check) {
+      const url = form.elements.downloadUrl.value.trim();
+      const info = $('#url-info', view);
+      if (!url) {
+        toastError('Bitte erst einen Link eintragen.');
+        return;
+      }
+      await withBusy(check, async () => {
+        try {
+          const result = await vx.library.probeDownload(url);
+          info.innerHTML = `${icon('check')} <strong>${esc(result.name)}</strong> · ${esc(result.sizeText)}
+            ${result.type ? `· <span class="mono">${esc(result.type)}</span>` : ''}`;
+          toastOk(`${result.name} (${result.sizeText}) ist erreichbar.`, 'Link geprüft');
+        } catch (err) {
+          info.innerHTML = `${icon('warn')} ${esc(err.message)}`;
+          toastError(err.message, 'Link nicht erreichbar');
+        }
+      });
       return;
     }
 

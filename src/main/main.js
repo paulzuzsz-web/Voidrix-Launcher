@@ -449,6 +449,35 @@ function registerIpc() {
     { auth: true }
   );
 
+  /* ---------- Installieren per Download-Link ---------- */
+
+  handle(
+    'library:install',
+    async ({ id }, event) => {
+      const entry = await library.installEntry(id, (progress) => {
+        if (!event.sender.isDestroyed()) event.sender.send('library:download-progress', progress);
+      });
+      broadcast('library:changed', { reason: 'install', id });
+      return entry;
+    },
+    { auth: true }
+  );
+
+  handle('library:cancelInstall', ({ id }) => library.cancelInstall(id), { auth: true });
+
+  handle(
+    'library:uninstall',
+    ({ id }) => {
+      const entry = library.uninstallEntry(id);
+      broadcast('library:changed', { reason: 'uninstall', id });
+      return entry;
+    },
+    { auth: true }
+  );
+
+  /** Link im Admin-Formular prüfen: Dateiname und Größe anzeigen. */
+  handle('library:probeDownload', ({ url }) => library.probeDownload(url), { admin: true });
+
   handle('library:launch', ({ id }) => library.launch(id), { auth: true });
   handle('library:stop', ({ id }) => library.stop(id), { auth: true });
   handle('library:reveal', ({ id }) => library.revealInFolder(id), { auth: true });

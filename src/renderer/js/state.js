@@ -13,6 +13,8 @@ export const state = {
   search: '',
   filter: 'all', // all | game | app | installed | missing
   route: { name: 'store', params: {} },
+  // id -> { percent, phase, text } für laufende Downloads
+  downloads: new Map(),
   booted: false,
 };
 
@@ -197,9 +199,104 @@ export async function saveApp(payload) {
   return saved;
 }
 
+/* --------------------------- Installieren ------------------------------- */
+
+/** Läuft für diesen Titel gerade ein Download? */
+export function downloadOf(id) {
+  return state.downloads.get(id) || null;
+}
+
+/**
+ * Lädt den Titel über seinen Download-Link herunter.
+ * Der Fortschritt landet in state.downloads und wird direkt im DOM
+ * aktualisiert - ohne die ganze Ansicht neu zu zeichnen.
+ */
+export async function installApp(id) {
+  const app = getApp(id);
+  if (!app) return;
+  if (state.downloads.has(id)) return;
+
+  state.downloads.set(id, { percent: 0, phase: 'start', text: 'Verbindung wird aufgebaut…' });
+  emit('apps');
+
+  try {
+    const updated = await vx.library.install(id);
+    state.downloads.delete(id);
+    upsertApp(updated);
+    toastOk(`${app.title} ist installiert und startbereit.`, 'Fertig');
+    return updated;
+  } catch (err) {
+    state.downloads.delete(id);
+    emit('apps');
+    if (/abgebrochen/i.test(err.message)) toast(`${app.title}: Download abgebrochen.`, { type: 'info' });
+    else toastError(err.message, `${app.title} konnte nicht installiert werden`);
+    return null;
+  }
+}
+
+export async function cancelInstall(id) {
+  try {
+    await vx.library.cancelInstall(id);
+  } catch (err) {
+    toastError(err.message);
+  }
+}
+
+export async function uninstallApp(id) {
+  const app = getApp(id);
+  const ok = await confirmDialog({
+    title: `"${app?.title}" deinstallieren?`,
+    text: 'Die heruntergeladenen Dateien werden gelöscht. Der Eintrag bleibt im Store und lässt sich jederzeit neu installieren.',
+    confirmLabel: 'Deinstallieren',
+    danger: true,
+  });
+  if (!ok) return false;
+  try {
+    const updated = await vx.library.uninstall(id);
+    upsertApp(updated);
+    toastOk('Dateien entfernt.');
+    return true;
+  } catch (err) {
+    toastError(err.message);
+    return false;
+  }
+}
+
+/** Schreibt den Fortschritt direkt in die passenden DOM-Knoten. */
+function applyProgress(p) {
+  // Nachzügler nach dem Ende ignorieren - sonst hinge die Karte im
+  // Zustand "lädt" fest, obwohl der Download längst fertig ist.
+  if (!state.downloads.has(p.id)) return;
+
+  const entry = {
+    percent: p.percent || 0,
+    phase: p.phase,
+    text:
+      p.phase === 'extract'
+        ? `Wird entpackt… ${p.percent}%`
+        : p.total
+          ? `${p.receivedText} von ${p.totalText} · ${p.speedText}`
+          : `${p.receivedText} geladen`,
+  };
+  state.downloads.set(p.id, entry);
+
+  document.querySelectorAll(`[data-progress="${CSS.escape(p.id)}"]`).forEach((box) => {
+    const bar = box.querySelector('.progress__bar span');
+    const text = box.querySelector('.progress__text');
+    if (bar) bar.style.width = `${entry.percent}%`;
+    if (text) text.textContent = entry.text;
+  });
+}
+
 /* ------------------------------ Live-Events ----------------------------- */
 
 export function connectLiveUpdates() {
   vx.library.onChanged(() => loadApps());
   vx.library.onRunning((entry) => upsertApp(entry));
+  vx.library.onDownloadProgress((p) => {
+    if (!p?.id) return;
+    if (p.phase === 'done') return; // das Ergebnis kommt über install()
+    applyProgress(p);
+  });
 }
+

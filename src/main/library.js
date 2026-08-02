@@ -11,6 +11,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
+const unzip = require('./unzip');
+const { download, probe } = require('./download');
 
 const EMPTY_CATALOG = { $schema: 'voidrix-catalog/1', version: 1, apps: [] };
 
@@ -89,6 +91,10 @@ function normalizeEntry(raw) {
     price: String(entry.price || 'Kostenlos'),
     // Der wichtigste Wert: hier traegt man ein, wo die .exe liegt.
     exePath: String(entry.exePath || entry.path || ''),
+    // Direkter Link zur Datei, z.B. ein GitHub-Release-Download.
+    downloadUrl: String(entry.downloadUrl || entry.download || ''),
+    installedFrom: String(entry.installedFrom || ''),
+    installedAt: String(entry.installedAt || ''),
     args: Array.isArray(entry.args) ? entry.args.map(String) : [],
     workingDir: String(entry.workingDir || ''),
     website: String(entry.website || ''),
@@ -352,6 +358,132 @@ async function uploadExecutable({ sourcePath, mode = 'file', title = '' }, onPro
     `Der Ordner wurde nach ${folderRef} kopiert, enthält aber keine startbare Datei.\n` +
       'Bitte den Pfad zur Programmdatei von Hand eintragen.'
   );
+}
+
+/* --------------------------------------------------------------------- */
+/* Installieren per Download-Link                                         */
+/* --------------------------------------------------------------------- */
+
+/** id -> Abbruchfunktion für laufende Downloads. */
+const installing = new Map();
+
+/** Beste Startdatei aus einer Kandidatenliste raten. */
+function pickBestExecutable(candidates, title) {
+  if (!candidates.length) return null;
+  const slug = slugify(title);
+  const scored = candidates.map((c) => {
+    const name = path.basename(c.rel).toLowerCase();
+    const base = slugify(path.basename(c.rel, path.extname(c.rel)));
+    let score = 0;
+    if (base === slug) score += 100;
+    else if (slug && (base.includes(slug) || slug.includes(base))) score += 50;
+    if (!c.rel.includes('/')) score += 20; // liegt oben im Ordner
+    if (name.endsWith('.exe')) score += 10;
+    if (/(unins|setup|install|crash|report|redist|vc_|directx)/i.test(name)) score -= 80;
+    return { ...c, score };
+  });
+  scored.sort((a, b) => b.score - a.score || b.size - a.size);
+  return scored[0];
+}
+
+/**
+ * Lädt die Datei aus `downloadUrl` herunter und macht den Eintrag startklar.
+ * ZIP-Archive werden dabei automatisch entpackt.
+ */
+async function installEntry(id, onProgress = () => {}) {
+  const entry = readCatalog().apps.find((a) => a.id === id);
+  if (!entry) throw new LibraryError('Eintrag nicht gefunden.');
+  if (!entry.downloadUrl) throw new LibraryError('Für diesen Titel ist kein Download-Link hinterlegt.');
+  if (installing.has(id)) throw new LibraryError('Dieser Titel wird bereits geladen.');
+
+  // Eine frühere Installation im Ordner spiele/ zuerst wegräumen.
+  removeUploadedFiles(entry);
+
+  const targetDir = uniqueGameDir(entry.title);
+  store.ensureDir(targetDir);
+
+  let result;
+  try {
+    result = await download(entry.downloadUrl, targetDir, {
+      onProgress: (p) => onProgress({ id, ...p }),
+      register: (cancel) => installing.set(id, cancel),
+      freeSpace: freeSpace(store.dataDir()),
+    });
+  } catch (err) {
+    installing.delete(id);
+    fs.rmSync(targetDir, { recursive: true, force: true });
+    throw new LibraryError(err.message);
+  }
+  installing.delete(id);
+
+  let exeRel = result.name;
+  let totalBytes = result.bytes;
+
+  // Archiv? Dann auspacken und die Startdatei suchen.
+  if (path.extname(result.name).toLowerCase() === '.zip') {
+    onProgress({ id, phase: 'extract', percent: 0, file: result.name });
+    try {
+      const extracted = await unzip.extract(result.file, targetDir, (p) =>
+        onProgress({ id, phase: 'extract', percent: p.percent, file: p.file })
+      );
+      totalBytes = extracted.bytes;
+    } catch (err) {
+      fs.rmSync(targetDir, { recursive: true, force: true });
+      throw new LibraryError(`Archiv konnte nicht entpackt werden: ${err.message}`);
+    }
+    fs.rmSync(result.file, { force: true });
+
+    const best = pickBestExecutable(findExecutables(targetDir), entry.title);
+    if (!best) {
+      throw new LibraryError(
+        `Im Archiv war keine startbare Datei zu finden. Die Dateien liegen in ${store.relativizeToData(targetDir)}.`
+      );
+    }
+    exeRel = best.rel;
+  } else if (process.platform !== 'win32') {
+    // Unter Linux/macOS muss die Datei ausführbar sein.
+    try {
+      fs.chmodSync(result.file, 0o755);
+    } catch {
+      /* nicht kritisch */
+    }
+  }
+
+  const folderRef = store.relativizeToData(targetDir);
+  const patched = patchEntry(id, {
+    exePath: `${folderRef}/${exeRel}`,
+    installedAt: new Date().toISOString(),
+    installedFrom: entry.downloadUrl,
+    size: entry.size || formatBytes(totalBytes),
+  });
+
+  onProgress({ id, phase: 'done', percent: 100 });
+  return patched;
+}
+
+/** Laufenden Download abbrechen. */
+function cancelInstall(id) {
+  const cancel = installing.get(id);
+  if (!cancel) throw new LibraryError('Für diesen Titel läuft gerade kein Download.');
+  cancel();
+  installing.delete(id);
+  return true;
+}
+
+/** Heruntergeladene/hochgeladene Dateien entfernen, Eintrag behalten. */
+function uninstallEntry(id) {
+  const entry = readCatalog().apps.find((a) => a.id === id);
+  if (!entry) throw new LibraryError('Eintrag nicht gefunden.');
+  if (!store.isInsideGames(entry.exePath)) {
+    throw new LibraryError('Dieser Titel liegt außerhalb des Launchers und wird nicht angerührt.');
+  }
+  removeUploadedFiles(entry);
+  return patchEntry(id, { exePath: '', installedAt: '' });
+}
+
+/** Prüft einen Download-Link, ohne die Datei zu laden (für das Admin-Formular). */
+function probeDownload(url) {
+  return probe(url);
 }
 
 /** Löscht die hochgeladenen Dateien eines Eintrags (nur innerhalb spiele/). */
@@ -694,17 +826,20 @@ function revealInFolder(id) {
 
 module.exports = {
   LibraryError,
+  cancelInstall,
   catalogInfo,
   decorate,
   deleteEntry,
   getApp,
   formatBytes,
   importMedia,
+  installEntry,
   isInstalled,
   launch,
   listApps,
   onRunningChanged,
   patchEntry,
+  probeDownload,
   readCatalog,
   removeUploadedFiles,
   resolveExe,
@@ -713,6 +848,7 @@ module.exports = {
   saveEntry,
   setExePath,
   stop,
+  uninstallEntry,
   uploadExecutable,
   writeCatalog,
 };

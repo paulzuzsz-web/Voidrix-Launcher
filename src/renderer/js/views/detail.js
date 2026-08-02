@@ -15,15 +15,20 @@ import {
   relativeTime,
 } from '../ui.js';
 import {
+  cancelInstall,
   clearExePath,
   deleteApp,
+  downloadOf,
   getApp,
   isAdmin,
+  installApp,
   launchApp,
   pickExePath,
   revealApp,
   stopApp,
+  uninstallApp,
 } from '../state.js';
+import { primaryAction, progressBox } from './cards.js';
 
 function infoRow(label, value) {
   if (!value) return '';
@@ -48,10 +53,11 @@ export function renderDetail(view, { navigate, params }) {
   }
 
   const banner = app.banner || app.cover || app.icon;
-  const canPlay = app.installed;
+  const action = primaryAction(app);
+  const loading = downloadOf(app.id);
 
   view.innerHTML = `
-  <article class="detail" style="--detail-accent:${esc(app.accentColor)}">
+  <article class="detail ${loading ? 'is-loading' : ''}" style="--detail-accent:${esc(app.accentColor)}">
     <header class="detail__hero">
       ${img(banner, app.title) || '<div class="detail__hero-fallback"></div>'}
       <div class="detail__hero-scrim"></div>
@@ -79,17 +85,20 @@ export function renderDetail(view, { navigate, params }) {
         </div>
 
         <div class="detail__actions">
+          <button class="btn ${action.style} btn--lg" data-act="${esc(action.key)}">
+            ${icon(action.icon)}${esc(action.label)}
+          </button>
           ${
-            app.running
-              ? `<button class="btn btn--danger btn--lg" data-act="stop">${icon('stop')}Beenden</button>`
-              : `<button class="btn ${canPlay ? 'btn--play' : 'btn--primary'} btn--lg" data-act="play">
-                   ${icon(canPlay ? 'play' : 'folder')}${canPlay ? 'Starten' : 'Pfad festlegen'}
-                 </button>`
-          }
-          ${
-            app.installed
+            app.installed && !loading
               ? `<button class="btn btn--icon btn--ghost" data-act="reveal" title="Im Ordner anzeigen">${icon(
                   'folder'
+                )}</button>`
+              : ''
+          }
+          ${
+            app.installed && !loading && app.uploaded
+              ? `<button class="btn btn--icon btn--ghost" data-act="uninstall" title="Deinstallieren">${icon(
+                  'trash'
                 )}</button>`
               : ''
           }
@@ -101,6 +110,7 @@ export function renderDetail(view, { navigate, params }) {
           }
         </div>
       </div>
+      ${loading ? `<div class="detail__progress">${progressBox(app)}</div>` : ''}
     </header>
 
     <div class="detail__grid">
@@ -148,6 +158,22 @@ export function renderDetail(view, { navigate, params }) {
           ${infoRow('Laufzeit', formatPlaytime(app.playtimeMinutes))}
         </dl>
 
+        ${
+          app.downloadUrl
+            ? `<div class="pathbox">
+                 <div class="pathbox__label">Download-Link</div>
+                 <div class="mono pathbox__value">${esc(app.downloadUrl)}</div>
+                 ${
+                   app.installedAt
+                     ? `<div class="field__hint" style="margin-top:6px">${icon('check')} Installiert am ${esc(
+                         formatDate(app.installedAt)
+                       )}</div>`
+                     : ''
+                 }
+               </div>`
+            : ''
+        }
+
         <div class="pathbox">
           <div class="pathbox__label">Programmdatei (.exe)</div>
           <div class="mono pathbox__value ${app.exePath && !app.installed ? 'is-missing' : ''}">
@@ -176,6 +202,9 @@ export function renderDetail(view, { navigate, params }) {
     back: () => navigate('store'),
     play: (btn) => launchApp(app.id, btn),
     stop: (btn) => stopApp(app.id, btn),
+    install: () => installApp(app.id),
+    cancel: () => cancelInstall(app.id),
+    uninstall: () => uninstallApp(app.id),
     reveal: () => revealApp(app.id),
     pick: () => pickExePath(app.id, app.title),
     clear: () => clearExePath(app.id),

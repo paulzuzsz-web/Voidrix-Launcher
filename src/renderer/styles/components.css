@@ -763,6 +763,71 @@
   }
 }
 
+/* ---------------------------- Fortschritt ------------------------------- */
+
+.progress {
+  display: grid;
+  gap: 6px;
+}
+
+.progress__bar {
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.progress__bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 99px;
+  background: var(--grad);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.85);
+  transition: width 0.25s linear;
+}
+
+.progress__text {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Auf der Karte kompakter */
+.progress--card .progress__bar {
+  height: 4px;
+}
+
+.progress--card .progress__text {
+  font-size: 11px;
+}
+
+.progress--hero {
+  max-width: 420px;
+  margin-top: 12px;
+}
+
+.progress--hero .progress__text {
+  font-size: 12.5px;
+  color: #cfcae6;
+}
+
+/* Während eines Downloads rutscht der Kopfbereich hoch, damit der
+   Fortschrittsbalken darunter Platz hat. */
+.detail__progress {
+  position: absolute;
+  left: clamp(24px, 3.4vw, 46px);
+  right: clamp(24px, 3.4vw, 46px);
+  bottom: 18px;
+  z-index: 4;
+}
+
+.detail.is-loading .detail__head {
+  bottom: 62px;
+}
+
 .scroll-x {
   display: flex;
   gap: 18px;
