@@ -60,7 +60,9 @@ export function appCard(app) {
       <div class="card__scrim"></div>
       <div class="card__top">
         ${statusBadge(app)}
-        <span class="badge">${app.type === 'app' ? 'App' : 'Game'}</span>
+        <span class="badge">${
+          app.source === 'remote' ? `${icon('globe')}Store` : app.type === 'app' ? 'App' : 'Game'
+        }</span>
       </div>
       <div class="card__body">
         <div class="card__title">${esc(app.title)}</div>

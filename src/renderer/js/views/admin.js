@@ -4,7 +4,7 @@
  */
 
 import { $, $$, esc, icon, img, initials, mediaUrl, modal, toast, toastError, toastOk, withBusy } from '../ui.js';
-import { deleteApp, getApp, saveApp, state } from '../state.js';
+import { deleteApp, getApp, publishApp, saveApp, state, unpublishApp } from '../state.js';
 
 const vx = window.voidrix;
 
@@ -66,6 +66,13 @@ function entryRow(app) {
       <div class="admin-item__path mono">${esc(app.exePath || 'kein Pfad hinterlegt')}</div>
     </div>
     <div class="admin-item__actions">
+      ${
+        app.source === 'remote'
+          ? `<button class="btn btn--sm btn--ghost" data-unpublish="${esc(app.id)}"
+                     title="Aus dem gemeinsamen Store zurückziehen">${icon('globe')}Im Store</button>`
+          : `<button class="btn btn--sm" data-publish="${esc(app.id)}"
+                     title="Für alle sichtbar machen">${icon('globe')}Veröffentlichen</button>`
+      }
       <button class="btn btn--sm btn--ghost" data-edit="${esc(app.id)}">${icon('edit')}Bearbeiten</button>
       <button class="btn btn--sm btn--danger btn--icon" data-del="${esc(app.id)}" title="Löschen">${icon('trash')}</button>
     </div>
@@ -520,6 +527,19 @@ export function renderAdmin(view, { navigate, params }) {
 
     if (event.target.closest('[data-new]')) {
       navigate('admin');
+      return;
+    }
+
+    const pub = event.target.closest('[data-publish]');
+    if (pub) {
+      await publishApp(pub.dataset.publish, pub);
+      navigate('admin', params);
+      return;
+    }
+
+    const unpub = event.target.closest('[data-unpublish]');
+    if (unpub) {
+      if (await unpublishApp(unpub.dataset.unpublish, unpub)) navigate('admin', params);
       return;
     }
 

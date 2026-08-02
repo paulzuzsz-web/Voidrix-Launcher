@@ -10,11 +10,12 @@ import {
   img,
   initials,
   modal,
+  toast,
   toastError,
   toastOk,
   withBusy,
 } from '../ui.js';
-import { emit, loadApps, state } from '../state.js';
+import { emit, loadApps, state, syncCatalog } from '../state.js';
 import { checkNow } from '../update.js';
 
 const vx = window.voidrix;
@@ -107,6 +108,19 @@ export function renderSettings(view, { onLogout }) {
         )}
 
         ${setting(
+          `${icon('globe')} Gemeinsamer Store`,
+          `Titel, die ein Admin veröffentlicht, erscheinen bei allen automatisch.
+           Der Launcher gleicht beim Start mit der Adresse unten ab.
+           <span id="catalog-state" class="mono"></span>`,
+          `<button class="btn btn--sm" data-act="catalog-sync">${icon('refresh')}Jetzt abgleichen</button>
+           ${
+             state.user?.isAdmin
+               ? `<button class="btn btn--sm btn--ghost" data-act="catalog-settings">${icon('settings')}Quelle</button>`
+               : ''
+           }`
+        )}
+
+        ${setting(
           `${icon('download')} Launcher-Updates`,
           `Beim Start prüft der Launcher, ob es eine neuere Version gibt (Vergleich mit der
            <span class="mono">package.json</span> aus dem Netz) — und installiert sie auf Wunsch.
@@ -154,6 +168,8 @@ export function renderSettings(view, { onLogout }) {
     'open-backups': () => open('backups'),
     'open-accounts': () => open('accounts'),
     'change-data': () => changeDataFolder(info),
+    'catalog-sync': (btn) => syncCatalog({ button: btn }),
+    'catalog-settings': () => editCatalogSource(),
     'update-check': (btn) => checkNow(btn),
     'update-settings': () => editUpdateSource(),
     reload: async (btn) => {
@@ -171,6 +187,23 @@ export function renderSettings(view, { onLogout }) {
     if (btn) actions[btn.dataset.act]?.(btn);
   });
 
+  // Stand des gemeinsamen Katalogs nachtragen.
+  vx.catalog
+    .settings()
+    .then((cfg) => {
+      const el = $('#catalog-state', view);
+      if (!el) return;
+      if (!cfg.url) {
+        el.textContent = 'Noch keine Adresse hinterlegt.';
+        return;
+      }
+      const last = cfg.lastSync ? new Date(cfg.lastSync).toLocaleString('de-DE') : 'noch nie';
+      const shared = state.apps.filter((a) => a.source === 'remote').length;
+      el.textContent = `${shared} Titel aus dem Store · zuletzt abgeglichen: ${last}` +
+        (cfg.autoSync ? '' : ' · Auto-Abgleich aus');
+    })
+    .catch(() => {});
+
   // Version und letzte Suche nachtragen.
   vx.update
     .settings()
@@ -184,6 +217,121 @@ export function renderSettings(view, { onLogout }) {
     .catch(() => {});
 
   return () => {};
+}
+
+/** Adresse des gemeinsamen Katalogs und Veröffentlichen einrichten (nur Admin). */
+async function editCatalogSource() {
+  let cfg;
+  try {
+    cfg = await vx.catalog.settings();
+  } catch (err) {
+    toastError(err.message);
+    return;
+  }
+
+  await modal({
+    title: 'Gemeinsamer Store',
+    text: 'Alle Launcher lesen dieselbe Datei. Wer veröffentlicht, schreibt hinein.',
+    html: `
+      <div class="field">
+        <label class="field__label" for="ct-url">Adresse der gemeinsamen Games-Apps.json</label>
+        <input class="input mono" id="ct-url" value="${esc(cfg.url || '')}"
+               placeholder="https://raw.githubusercontent.com/USER/REPO/main/Games-Apps.json" />
+        <div class="field__hint">Nur lesen — dafür braucht niemand ein Konto.</div>
+      </div>
+
+      <div class="form-card__title" style="margin-top:18px">${icon('upload')} Veröffentlichen</div>
+
+      <div class="form-row">
+        <div class="field">
+          <label class="field__label" for="ct-repo">Repository</label>
+          <input class="input mono" id="ct-repo" value="${esc(cfg.publish?.repo || '')}" placeholder="Nutzer/Repo" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="ct-branch">Branch</label>
+          <input class="input mono" id="ct-branch" value="${esc(cfg.publish?.branch || 'main')}" placeholder="main" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="ct-path">Datei im Repo</label>
+        <input class="input mono" id="ct-path" value="${esc(cfg.publish?.path || 'Games-Apps.json')}" />
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="ct-token">GitHub-Token</label>
+        <input class="input mono" id="ct-token" type="password" autocomplete="off"
+               placeholder="${cfg.hasToken ? 'gespeichert — zum Ersetzen neu eintragen' : 'ghp_… (Recht: Contents schreiben)'}" />
+        <div class="field__hint">
+          ${
+            cfg.hasToken
+              ? `${icon('check')} Ein Token ist hinterlegt${cfg.tokenPlain ? ' (unverschlüsselt — kein Systemschlüsselbund gefunden)' : ' und verschlüsselt gespeichert'}.`
+              : 'Ohne Token geht Veröffentlichen nicht — dann hilft der Knopf „Exportieren".'
+          }
+        </div>
+      </div>
+
+      <label class="checkbox">
+        <input type="checkbox" id="ct-auto" ${cfg.autoSync ? 'checked' : ''} />
+        Beim Start automatisch abgleichen
+      </label>`,
+    wide: true,
+    actions: [
+      { label: 'Abbrechen', className: 'btn--ghost' },
+      {
+        label: 'Exportieren',
+        className: 'btn--ghost',
+        keepOpen: true,
+        onClick: async (root) => {
+          const btn = $('[data-action="1"]', root);
+          await withBusy(btn, async () => {
+            try {
+              const result = await vx.catalog.export();
+              toastOk(`${result.count} Titel geschrieben:\n${result.file}`, 'Zum Hochladen bereit');
+              vx.shell.openPath('data').catch(() => {});
+            } catch (err) {
+              toastError(err.message);
+            }
+          });
+        },
+      },
+      {
+        label: 'Speichern',
+        className: 'btn--primary',
+        keepOpen: true,
+        onClick: async (root, close) => {
+          const btn = $('[data-action="2"]', root);
+          await withBusy(btn, async () => {
+            try {
+              await vx.catalog.saveSettings({
+                url: $('#ct-url', root).value.trim(),
+                autoSync: $('#ct-auto', root).checked,
+                publish: {
+                  repo: $('#ct-repo', root).value.trim(),
+                  branch: $('#ct-branch', root).value.trim() || 'main',
+                  path: $('#ct-path', root).value.trim() || 'Games-Apps.json',
+                },
+              });
+              const token = $('#ct-token', root).value.trim();
+              if (token) {
+                const info = await vx.catalog.setToken(token);
+                if (!info.encrypted) {
+                  toast('Token gespeichert — ohne Systemschlüsselbund leider unverschlüsselt.', {
+                    type: 'info',
+                    title: 'Hinweis',
+                  });
+                }
+              }
+              toastOk('Store-Einstellungen gespeichert.');
+              close(true);
+            } catch (err) {
+              toastError(err.message);
+            }
+          });
+        },
+      },
+    ],
+  });
 }
 
 /** Woher kommt die Update-Info? (nur Admin) */

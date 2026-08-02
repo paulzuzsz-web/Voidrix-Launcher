@@ -8,6 +8,8 @@ Gebaut mit Electron, komplett offline, alle Daten bleiben auf dem eigenen PC.
 * **Konten**: Registrieren mit Benutzername, Profilname, Passwort + Wiederholung. Wer sich einmal
   angemeldet hat, bleibt auch nach einem Neustart des Launchers angemeldet.
 * **Store & Bibliothek**: Hero-Karussell, Karten mit Cover, Detailseiten mit Banner, Screenshots und Infos.
+* **Gemeinsamer Store**: Was ein Admin veröffentlicht, erscheint bei allen anderen automatisch —
+  alle Launcher lesen dieselbe `Games-Apps.json` aus dem Netz.
 * **Veröffentlichen per Link**: Beim Anlegen eines Titels einfach die Adresse der Datei eintragen
   (z. B. ein GitHub-Release). Jeder Nutzer sieht dann **Installieren**, die Datei wird mit
   Fortschrittsanzeige heruntergeladen, ZIPs werden automatisch entpackt — danach startbereit.
@@ -81,7 +83,7 @@ diese Struktur:
 ├── spiele/              hochgeladene Spiele und Apps (ein Ordner je Titel)
 ├── sicherungen/         automatische Kopien der Games-Apps.json
 ├── updates/             heruntergeladene Launcher-Updates
-├── einstellungen.json   Launcher-Einstellungen (u. a. Update-Quelle)
+├── einstellungen.json   Launcher-Einstellungen (Store-Quelle, Update-Quelle, Token)
 └── LIESMICH.txt         kurze Erklärung im Ordner selbst
 ```
 
@@ -153,6 +155,7 @@ die Umgebungsvariable `VOIDRIX_CATALOG` auf einen eigenen Pfad.
 | `screenshots`               | Liste weiterer Bilder für die Detailseite.                                            |
 | `featured`                  | `true` = erscheint im Hero-Karussell des Stores.                                      |
 | `accentColor`               | Akzentfarbe für Karten und Hintergründe, z. B. `#22d3ee`.                              |
+| `source`                    | `remote` = kommt aus dem gemeinsamen Store, `local` = nur auf diesem PC (setzt der Launcher selbst). |
 | `tags`, `version`, `size`, `price`, `releaseDate`, `developer`, `publisher`, `website` | reine Anzeigedaten |
 
 **Installiert oder nicht?** Der Launcher prüft schlicht, ob die Datei unter `exePath` existiert.
@@ -212,6 +215,55 @@ Datenordner und haben Vorrang vor der `package.json`.
 Fertig: Alle laufenden Launcher sehen die neue Version beim nächsten Start. Vorabversionen wie
 `1.1.0-beta.1` gelten dabei als älter als `1.1.0`. Wer ein Update nicht will, klickt
 **Diese Version überspringen** — dann kommt das Fenster erst bei der nächsten Version wieder.
+
+---
+
+## Gemeinsamer Store — einmal veröffentlichen, alle sehen es
+
+Standardmäßig kennt jeder Launcher nur seine eigene `Games-Apps.json`. Damit ein Titel bei **allen**
+auftaucht, gibt es den gemeinsamen Store: eine einzige `Games-Apps.json` im Netz, die jeder Launcher
+beim Start liest.
+
+```
+   Admin: „Veröffentlichen"                       alle anderen: beim Start
+            │                                              ▲
+            ▼                                              │
+   Games-Apps.json im GitHub-Repo  ────────────────────────┘
+   (raw.githubusercontent.com/…)
+```
+
+**Einrichten** (Einstellungen → *Gemeinsamer Store* → **Quelle**, nur Admin):
+
+| Feld | Beispiel |
+| --- | --- |
+| Adresse | `https://raw.githubusercontent.com/USER/REPO/main/Games-Apps.json` |
+| Repository | `USER/REPO` |
+| Branch / Datei | `main` / `Games-Apps.json` |
+| GitHub-Token | Feingranularer Token mit Schreibrecht auf *Contents* |
+
+Voreingestellt ist das in `voidrix.catalog` der `package.json` — wer das dort einträgt, muss im
+Launcher nichts mehr einstellen. **Zum Lesen braucht niemand ein Konto oder einen Token** — nur zum
+Veröffentlichen.
+
+**Veröffentlichen**: Im Admin-Bereich oder auf der Detailseite auf das Weltkugel-Symbol
+(**Veröffentlichen**) klicken. Der Launcher schreibt den Titel in die Datei im Repo; beim nächsten
+Start (oder mit **Jetzt abgleichen**) hat ihn jeder. **Zurückziehen** entfernt ihn wieder.
+
+Ein Titel muss dafür einen **Download-Link** haben — sonst könnten die anderen ihn ja nicht
+installieren. Bilder sollten `https://`-Adressen sein; liegen sie nur lokal in `media/`, warnt der
+Launcher beim Veröffentlichen.
+
+**Was beim Abgleich passiert**
+
+* Neue Titel kommen dazu, geänderte werden aktualisiert.
+* **Lokales bleibt lokal**: Pfad zur `.exe`, Installationsdatum, Spielzeit und Startzähler überschreibt
+  der Abgleich nie.
+* Verschwindet ein Titel oben, verschwindet er auch lokal — es sei denn, er ist installiert. Dann
+  bleibt er erhalten und gilt nur nicht mehr als Store-Titel.
+* Ohne Netz passiert nichts, der Launcher startet normal weiter.
+
+**Kein Token?** Der Knopf **Exportieren** legt eine fertige `Games-Apps.veroeffentlichen.json` im
+Datenordner ab — die lädt man von Hand ins Repo.
 
 ---
 

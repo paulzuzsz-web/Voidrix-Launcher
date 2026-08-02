@@ -95,6 +95,9 @@ function normalizeEntry(raw) {
     downloadUrl: String(entry.downloadUrl || entry.download || ''),
     installedFrom: String(entry.installedFrom || ''),
     installedAt: String(entry.installedAt || ''),
+    // 'remote' = kommt aus dem gemeinsamen Katalog, 'local' = nur auf diesem PC
+    source: entry.source === 'remote' ? 'remote' : 'local',
+    publishedAt: String(entry.publishedAt || ''),
     args: Array.isArray(entry.args) ? entry.args.map(String) : [],
     workingDir: String(entry.workingDir || ''),
     website: String(entry.website || ''),

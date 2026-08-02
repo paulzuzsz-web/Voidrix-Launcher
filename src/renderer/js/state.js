@@ -288,6 +288,82 @@ function applyProgress(p) {
   });
 }
 
+/* -------------------------- Gemeinsamer Katalog ------------------------- */
+
+/** Holt den gemeinsamen Katalog und meldet, was sich geändert hat. */
+export async function syncCatalog({ silent = false, button } = {}) {
+  const run = async () => {
+    try {
+      const result = silent ? await vx.catalog.autoSync() : await vx.catalog.sync(false);
+      if (result?.skip) {
+        if (!silent && result.error) toastError(result.error, 'Abgleich');
+        return result;
+      }
+      await loadApps();
+
+      const neu = result.added || 0;
+      const geaendert = result.updated || 0;
+      const weg = result.removed || 0;
+      if (!silent || neu || weg) {
+        const teile = [];
+        if (neu) teile.push(`${neu} neu`);
+        if (geaendert) teile.push(`${geaendert} aktualisiert`);
+        if (weg) teile.push(`${weg} entfernt`);
+        toastOk(teile.length ? teile.join(', ') : 'Alles schon aktuell.', 'Store abgeglichen');
+      }
+      return result;
+    } catch (err) {
+      if (!silent) toastError(err.message, 'Abgleich fehlgeschlagen');
+      return null;
+    }
+  };
+  return button ? withBusy(button, run) : run();
+}
+
+/** Titel für alle sichtbar machen (nur Admin). */
+export async function publishApp(id, button) {
+  return withBusy(button, async () => {
+    try {
+      const result = await vx.catalog.publish(id);
+      await loadApps();
+      toastOk(
+        `"${result.title}" ist jetzt für alle im Store.` +
+          (result.warnings?.length
+            ? `\nHinweis: ${result.warnings.join(', ')} liegen nur lokal — andere sehen die Bilder nicht.`
+            : ''),
+        result.isNew ? 'Veröffentlicht' : 'Aktualisiert'
+      );
+      return result;
+    } catch (err) {
+      toastError(err.message, 'Veröffentlichen fehlgeschlagen');
+      return null;
+    }
+  });
+}
+
+export async function unpublishApp(id, button) {
+  const app = getApp(id);
+  const ok = await confirmDialog({
+    title: `"${app?.title}" zurückziehen?`,
+    text: 'Der Titel verschwindet aus dem gemeinsamen Katalog. Bei allen anderen ist er nach dem nächsten Abgleich weg — bereits installierte Dateien bleiben dort erhalten.',
+    confirmLabel: 'Zurückziehen',
+    danger: true,
+  });
+  if (!ok) return false;
+
+  return withBusy(button, async () => {
+    try {
+      const result = await vx.catalog.unpublish(id);
+      await loadApps();
+      toastOk(`"${result.title}" wurde zurückgezogen.`);
+      return true;
+    } catch (err) {
+      toastError(err.message, 'Zurückziehen fehlgeschlagen');
+      return false;
+    }
+  });
+}
+
 /* ------------------------------ Live-Events ----------------------------- */
 
 export function connectLiveUpdates() {

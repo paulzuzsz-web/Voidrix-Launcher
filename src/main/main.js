@@ -17,6 +17,7 @@ const store = require('./store');
 const auth = require('./auth');
 const library = require('./library');
 const updater = require('./updater');
+const catalogSync = require('./catalog-sync');
 
 const RENDERER_DIR = path.join(__dirname, '..', 'renderer');
 const APP_ORIGIN = 'app://voidrix';
@@ -483,6 +484,60 @@ function registerIpc() {
   handle('library:launch', ({ id }) => library.launch(id), { auth: true });
   handle('library:stop', ({ id }) => library.stop(id), { auth: true });
   handle('library:reveal', ({ id }) => library.revealInFolder(id), { auth: true });
+
+  /* ---------- Gemeinsamer Katalog ---------- */
+
+  handle(
+    'catalog:sync',
+    async ({ silent } = {}) => {
+      const result = await catalogSync.sync({ silent: Boolean(silent) });
+      if (!result.skip) broadcast('library:changed', { reason: 'sync' });
+      return result;
+    },
+    { auth: true }
+  );
+
+  /** Beim Start: nur abgleichen, wenn es an der Zeit ist - Fehler stören nicht. */
+  handle(
+    'catalog:autoSync',
+    async () => {
+      if (!catalogSync.shouldAutoSync()) return { skip: true };
+      try {
+        const result = await catalogSync.sync({ silent: true });
+        if (!result.skip) broadcast('library:changed', { reason: 'sync' });
+        return result;
+      } catch (err) {
+        return { skip: true, error: err.message };
+      }
+    },
+    { auth: true }
+  );
+
+  handle('catalog:settings', () => catalogSync.config(), { auth: true });
+  handle('catalog:saveSettings', (patch) => catalogSync.saveConfig(patch), { admin: true });
+  handle('catalog:setToken', ({ token }) => catalogSync.setToken(token), { admin: true });
+
+  handle(
+    'catalog:publish',
+    async ({ id }) => {
+      const result = await catalogSync.publish(id);
+      broadcast('library:changed', { reason: 'publish', id });
+      return result;
+    },
+    { admin: true }
+  );
+
+  handle(
+    'catalog:unpublish',
+    async ({ id }) => {
+      const result = await catalogSync.unpublish(id);
+      broadcast('library:changed', { reason: 'unpublish', id });
+      return result;
+    },
+    { admin: true }
+  );
+
+  handle('catalog:export', () => catalogSync.exportCatalog(), { admin: true });
 
   /* ---------- Launcher-Update ---------- */
 

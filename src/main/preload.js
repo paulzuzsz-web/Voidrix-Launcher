@@ -78,6 +78,17 @@ contextBridge.exposeInMainWorld('voidrix', {
     onRunning: (cb) => on('library:running', cb),
   },
 
+  catalog: {
+    sync: (silent = false) => call('catalog:sync', { silent }),
+    autoSync: () => call('catalog:autoSync'),
+    settings: () => call('catalog:settings'),
+    saveSettings: (patch) => call('catalog:saveSettings', patch),
+    setToken: (token) => call('catalog:setToken', { token }),
+    publish: (id) => call('catalog:publish', { id }),
+    unpublish: (id) => call('catalog:unpublish', { id }),
+    export: () => call('catalog:export'),
+  },
+
   update: {
     check: (silent = false) => call('update:check', { silent }),
     autoCheck: () => call('update:autoCheck'),
